@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import {
   type Content,
   type Kind,
+  kinds,
   labels,
   fields,
   shownName,
@@ -14,11 +15,50 @@ import { asset, download } from "./db";
 export type ExportOptions = {
   kinds: Kind[];
   entityIds?: string[];
+  order?: "kind" | "registration" | "name" | "manual";
+  entityOrder?: string[];
   template?: "encyclopedia" | "character" | "tourism" | "setting";
   logo: boolean;
   separate: boolean;
   width: number;
 };
+
+export function orderEntities(
+  entities: Content["entities"],
+  order: ExportOptions["order"] = "kind",
+  entityOrder: string[] = [],
+): Content["entities"] {
+  const indexed = entities.map((entity, index) => ({ entity, index }));
+  if (order === "registration") return indexed.map(({ entity }) => entity);
+  if (order === "name")
+    return indexed
+      .sort(
+        (a, b) =>
+          shownName(a.entity).localeCompare(shownName(b.entity), "ja", {
+            numeric: true,
+            sensitivity: "base",
+          }) || a.index - b.index,
+      )
+      .map(({ entity }) => entity);
+  if (order === "manual") {
+    const positions = new Map(entityOrder.map((id, index) => [id, index]));
+    return indexed
+      .sort(
+        (a, b) =>
+          (positions.get(a.entity.id) ?? Number.MAX_SAFE_INTEGER) -
+            (positions.get(b.entity.id) ?? Number.MAX_SAFE_INTEGER) ||
+          a.index - b.index,
+      )
+      .map(({ entity }) => entity);
+  }
+  return indexed
+    .sort(
+      (a, b) =>
+        kinds.indexOf(a.entity.kind) - kinds.indexOf(b.entity.kind) ||
+        a.index - b.index,
+    )
+    .map(({ entity }) => entity);
+}
 // Canvas pages avoid fragile DOM screenshot heights and provide identical PNG/PDF layouts.
 export async function renderPages(
   content: Content,
@@ -168,9 +208,15 @@ export async function renderPages(
   };
   newPage();
   await entry(content.world, theme.title);
-  for (const e of content.entities.filter((e) =>
-    options.kinds.includes(e.kind) && (options.entityIds || content.entities.map((entity) => entity.id)).includes(e.id),
-  )) {
+  const selectedIds = options.entityIds || content.entities.map((entity) => entity.id);
+  const exportEntities = orderEntities(
+    content.entities.filter((entity) =>
+      options.kinds.includes(entity.kind) && selectedIds.includes(entity.id),
+    ),
+    options.order,
+    options.entityOrder,
+  );
+  for (const e of exportEntities) {
     if (options.separate || y > bottom - 150) newPage();
     else y += 35;
     await entry(e, labels[e.kind]);

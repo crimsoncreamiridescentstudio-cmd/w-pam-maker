@@ -1,5 +1,5 @@
 import { it, expect, vi, afterEach } from "vitest";
-import { renderPages } from "../src/export";
+import { orderEntities, renderPages } from "../src/export";
 import { blank, entitySchema, contentSchema, recordOverrideSchema, relationOverrideSchema } from "../src/model";
 afterEach(() => vi.unstubAllGlobals());
 function mockCanvas() {
@@ -22,6 +22,18 @@ function mockCanvas() {
   });
   return drawn;
 }
+it("orders export entities by kind, registration, name, or a manual list", () => {
+  const world = blank("世界");
+  const location = entitySchema.parse({ ...blank("う・王都10"), kind: "location", worldId: world.id });
+  const characterB = entitySchema.parse({ ...blank("い・勇者2"), kind: "character", worldId: world.id });
+  const characterA = entitySchema.parse({ ...blank("あ・勇者1"), kind: "character", worldId: world.id });
+  const entities = [location, characterB, characterA];
+
+  expect(orderEntities(entities, "registration").map((entity) => entity.id)).toEqual([location.id, characterB.id, characterA.id]);
+  expect(orderEntities(entities, "kind").map((entity) => entity.id)).toEqual([characterB.id, characterA.id, location.id]);
+  expect(orderEntities(entities, "name").map((entity) => entity.id)).toEqual([characterA.id, characterB.id, location.id]);
+  expect(orderEntities(entities, "manual", [characterA.id, location.id, characterB.id]).map((entity) => entity.id)).toEqual([characterA.id, location.id, characterB.id]);
+});
 it("paginates long Japanese text without silently truncating and excludes author notes", async () => {
   const drawn = mockCanvas();
   const r = blank("冊子");
