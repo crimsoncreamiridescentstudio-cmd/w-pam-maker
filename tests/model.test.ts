@@ -8,6 +8,8 @@ import {
   imageRefs,
   worldSchema,
   shownName,
+  relationDisplayLines,
+  relationCurveOffsets,
   referenceParts,
   entitySchema,
 } from "../src/model";
@@ -60,7 +62,7 @@ describe("world history", () => {
     expect(
       backupSchema.safeParse({
         format: "w-pam-backup",
-        schemaVersion: 2,
+        schemaVersion: 3,
         worlds: [],
         images: [],
         exportedAt: new Date().toISOString(),
@@ -87,7 +89,33 @@ describe("world history", () => {
       displayName: "",
       imagePositions: {},
       relatedIds: [],
+      customFields: [],
+      dialogueSamples: "",
     });
+    expect(parsed.content).toMatchObject({ relations: [], collections: [], events: [] });
+  });
+  it("formats relationship labels as at most two ten-character lines", () => {
+    expect(relationDisplayLines("1234567890abcdefghijXYZ")).toEqual([
+      "1234567890",
+      "abcdefghi…",
+    ]);
+    expect(relationDisplayLines("親友")).toEqual(["親友"]);
+  });
+  it("separates reverse and duplicate relationship edges", () => {
+    const offsets = relationCurveOffsets([
+      { id: "ab", from: "a", to: "b" },
+      { id: "ba", from: "b", to: "a" },
+      { id: "ab2", from: "a", to: "b" },
+    ]);
+    expect(offsets.get("ab")).toBe(-96);
+    expect(offsets.get("ba")).toBe(0);
+    expect(offsets.get("ab2")).toBe(96);
+    const reversePair = relationCurveOffsets([
+      { id: "forward", from: "a", to: "b" },
+      { id: "reverse", from: "b", to: "a" },
+    ]);
+    expect(reversePair.get("forward")).toBe(-48);
+    expect(reversePair.get("reverse")).toBe(48);
   });
   it("prefers a display name and parses safe inline references", () => {
     const r = blank("半藤 智咲");
@@ -120,5 +148,22 @@ describe("world history", () => {
       copy.content.entities[0].id,
     ]);
     expect(copy.content.entities[1].relatedIds).not.toContain(a.id);
+  });
+  it("remaps independent relations, groups, events and hierarchy", () => {
+    const w = world();
+    const a = entitySchema.parse({ ...blank("親"), kind: "organization", worldId: w.content.world.id });
+    const b = entitySchema.parse({ ...blank("子"), kind: "organization", worldId: w.content.world.id, parentId: a.id });
+    const now = new Date().toISOString();
+    w.content.entities = [a, b];
+    Object.assign(w.content, {
+      relations: [{ id: crypto.randomUUID(), from: a.id, to: b.id, type: "管轄", direction: "directed", note: "", createdAt: now, updatedAt: now }],
+      collections: [{ id: crypto.randomUUID(), name: "組織群", description: "", entityIds: [a.id, b.id], createdAt: now, updatedAt: now }],
+      events: [{ id: crypto.randomUUID(), title: "設立", date: "元年", sortKey: "0001", description: "", entityIds: [a.id], createdAt: now, updatedAt: now }],
+    });
+    const copy = duplicateWorld(w);
+    expect(copy.content.entities[1].parentId).toBe(copy.content.entities[0].id);
+    expect(copy.content.relations[0]).toMatchObject({ from: copy.content.entities[0].id, to: copy.content.entities[1].id });
+    expect(copy.content.collections[0].entityIds).toEqual(copy.content.entities.map((entity) => entity.id));
+    expect(copy.content.events[0].entityIds).toEqual([copy.content.entities[0].id]);
   });
 });

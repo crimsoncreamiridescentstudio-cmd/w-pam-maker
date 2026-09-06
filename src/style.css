@@ -194,6 +194,87 @@ footer {
   font-size: 0.875rem;
   text-align: center;
 }
+
+/* Preview 0.3: dense world-navigation tools */
+.tools-active { grid-template-columns: minmax(0, 1fr); }
+.workspace-tools { margin-top: 8px; }
+.subtabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 14px; scrollbar-width: thin; }
+.subtabs button { min-width: max-content; display: inline-flex; align-items: center; gap: 7px; border: 1.5px solid var(--light-line); border-radius: 999px; padding: 9px 13px; background: var(--bg); color: var(--muted); }
+.subtabs button[aria-current="page"] { border-color: var(--line); background: var(--gold); color: #49382d; font-weight: 700; }
+.tool-panel { border-top: 1.5px dashed var(--light-line); padding-top: 22px; }
+.search-box, .compact-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; padding: 16px; background: var(--sub); border: 1.5px solid var(--light-line); border-radius: 16px; }
+.search-box .full, .compact-form .full, .compact-form > button { grid-column: 1 / -1; }
+.filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.tool-list { display: grid; gap: 8px; }
+.tool-entity { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; padding: 12px 14px; border: 1.5px solid var(--light-line); border-radius: 12px; background: var(--paper); }
+.tool-entity:hover { border-color: var(--line); transform: translateY(-1px); }
+.tool-entity > span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tool-entity strong { overflow-wrap: anywhere; }
+.tool-entity svg { width: 17px; height: 17px; color: #9a6900; fill: color-mix(in srgb, var(--gold) 45%, transparent); }
+.relation-graph-shell { border: 1.5px solid var(--light-line); border-radius: 16px; background: var(--sub); overflow: hidden; }
+.relation-graph-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--light-line); background: color-mix(in srgb, var(--paper) 68%, var(--sub)); }
+.relation-graph-toolbar small { color: var(--muted); }
+.relation-zoom-controls { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.relation-zoom-controls .icon-button { width: 40px; height: 40px; }
+.relation-zoom-controls .icon-button:disabled, .relation-fit-button:disabled, .relation-center-button:disabled { opacity: .45; cursor: default; }
+.relation-zoom-value { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+.relation-fit-button, .relation-center-button { min-height: 40px; padding: 8px 11px; }
+.relation-fit-button svg { width: 17px; height: 17px; }
+.relation-graph-wrap { overflow: auto; background: var(--sub); overscroll-behavior: contain; }
+.relation-graph { width: 100%; min-width: 560px; height: auto; user-select: none; -webkit-user-select: none; }
+.relation-graph.is-pannable { cursor: grab; }
+.relation-graph.is-pannable:active { cursor: grabbing; }
+.relation-graph line { stroke: var(--line); stroke-width: 2; }
+.relation-graph marker path { fill: var(--line); }
+.relation-graph > g > text { fill: var(--muted); font-size: 12px; text-anchor: middle; paint-order: stroke; stroke: var(--sub); stroke-width: 5px; }
+.graph-node { cursor: pointer; }
+.graph-node circle { fill: var(--paper); stroke: var(--gold); stroke-width: 3; }
+.graph-node text { fill: var(--ink); font: 700 12px "Zen Kaku Gothic Antique"; text-anchor: middle; }
+.graph-node:focus circle, .graph-node:hover circle { stroke: var(--coral); stroke-width: 5; }
+.relation-list { display: grid; gap: 8px; margin-top: 18px; }
+.relation-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border-bottom: 1px solid var(--light-line); padding: 8px 0; }
+.relation-list article > button:not(.icon-button) { border: 0; background: transparent; text-decoration: underline; text-underline-offset: 4px; }
+.relation-list article small { grid-column: 1 / -1; text-align: center; }
+.event-list { position: relative; margin-top: 18px; }
+.event-list::before { content: ""; position: absolute; left: 94px; top: 0; bottom: 0; border-left: 2px solid var(--gold); }
+.event-list article { position: relative; display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 30px; padding: 14px 0; }
+.event-list article::before { content: ""; position: absolute; left: 88px; top: 25px; width: 12px; height: 12px; border-radius: 50%; background: var(--gold); border: 2px solid var(--paper); }
+.event-list time { color: var(--muted); font-weight: 700; overflow-wrap: anywhere; }
+.event-list h3 { margin: 0; }
+.mini-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.mini-links button { border: 1px solid var(--light-line); border-radius: 999px; background: var(--sub); padding: 4px 9px; }
+.collection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 18px; }
+.collection-grid > article { border: 1.5px solid var(--light-line); border-radius: 16px; padding: 16px; background: var(--sub); }
+.recent-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.recent-row time { font-size: .8125rem; color: var(--muted); }
+.wander { text-align: center; padding: 32px 16px; }
+.wander > svg { width: 52px; height: 52px; color: var(--coral); }
+.wander-result { max-width: 540px; margin: 28px auto 0; padding: 24px; background: var(--sub); border: 1.5px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+.custom-fields { margin-top: 22px; padding-top: 16px; border-top: 1.5px dashed var(--line); }
+.custom-fields legend { font-family: "Kaisei Opti", serif; font-weight: 700; font-size: 1.1rem; }
+.custom-field-row { display: grid; grid-template-columns: minmax(140px, .4fr) minmax(0, 1fr) auto; gap: 8px; align-items: start; margin: 10px 0; }
+.custom-field-row textarea, .custom-field-row input { margin: 0; }
+.relation-nav { display: grid; gap: 8px; }
+.relation-nav button { display: grid; grid-template-columns: minmax(80px, auto) auto 1fr; gap: 8px; align-items: center; text-align: left; border: 1.5px solid var(--light-line); border-radius: 12px; background: var(--sub); padding: 10px 12px; }
+.relation-nav small { grid-column: 1 / -1; }
+.record-history { margin: 24px 0; border: 1.5px solid var(--light-line); border-radius: 14px; padding: 12px 14px; }
+.record-history summary { cursor: pointer; font-weight: 700; }
+.record-history > div { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; padding: 9px 0; border-top: 1px solid var(--light-line); }
+.export-selection { margin: 14px 0; border: 1.5px solid var(--light-line); border-radius: 12px; padding: 10px 14px; }
+.export-selection summary { cursor: pointer; font-weight: 700; }
+
+@media (max-width: 700px) {
+  .search-box, .compact-form, .filter-row { grid-template-columns: 1fr; }
+  .search-box .full, .compact-form .full, .compact-form > button { grid-column: auto; }
+  .custom-field-row { grid-template-columns: 1fr; }
+  .relation-list article { grid-template-columns: 1fr auto 1fr; }
+  .relation-list article .icon-button { grid-column: 1 / -1; justify-self: end; }
+  .event-list::before { left: 10px; }
+  .event-list article { grid-template-columns: 1fr auto; padding-left: 32px; gap: 8px; }
+  .event-list article::before { left: 4px; }
+  .event-list time { grid-column: 1 / -1; }
+  .recent-row, .record-history > div { grid-template-columns: 1fr; }
+}
 .shell {
   max-width: 1240px;
   margin: auto;
@@ -964,3 +1045,181 @@ dialog::backdrop {
     scroll-behavior: auto !important;
   }
 }
+
+/* Preview 0.3 relationship editing improvements */
+.graph-edge path {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.graph-edge text {
+  fill: var(--muted);
+  font-size: 12px;
+  text-anchor: middle;
+}
+.graph-edge-label {
+  pointer-events: none;
+}
+.graph-edge-label rect {
+  fill: color-mix(in srgb, var(--sub) 92%, transparent);
+  stroke: color-mix(in srgb, var(--line) 28%, transparent);
+  stroke-width: 1px;
+}
+.graph-edge-label text {
+  dominant-baseline: alphabetic;
+  paint-order: stroke;
+  stroke: color-mix(in srgb, var(--sub) 96%, transparent);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+.relation-search {
+  display: block;
+  margin-top: 18px;
+}
+.relation-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.relation-list article > .relation-actions {
+  align-self: center;
+}
+.relation-list .relation-edit-row {
+  display: block;
+  padding: 12px 0;
+}
+.relation-edit-form {
+  width: 100%;
+}
+.relation-list article > span,
+.relation-nav strong,
+.character-relation-row strong {
+  white-space: pre-line;
+}
+.character-relations-editor {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1.5px dashed var(--line);
+}
+.character-relations-editor > legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Kaisei Opti", serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.character-relations-editor > legend svg {
+  width: 20px;
+  height: 20px;
+}
+.character-relation-add {
+  margin-top: 12px;
+}
+.character-relation-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.character-relation-columns details {
+  min-width: 0;
+  border: 1.5px solid var(--light-line);
+  border-radius: 14px;
+  background: var(--sub);
+  padding: 10px 12px;
+}
+.character-relation-columns summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.character-relation-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 520px;
+  overflow: auto;
+}
+.character-relation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--paper);
+  border: 1px solid var(--light-line);
+}
+.character-relation-row > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.character-relation-row strong,
+.character-relation-row span,
+.character-relation-row small {
+  overflow-wrap: anywhere;
+}
+.character-relation-row small {
+  color: var(--muted);
+}
+.character-relation-edit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.character-relation-edit .full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+  .character-relation-columns,
+  .character-relation-edit {
+    grid-template-columns: 1fr;
+  }
+  .character-relation-edit .full {
+    grid-column: auto;
+  }
+  .relation-list article > .relation-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+/* World folders and Dimension controls inherit the existing theme and UI scale. */
+.dimension-box, .dimension-membership { margin: 18px 0; padding: calc(18px * var(--space)); border: 1.5px solid var(--light-line); border-radius: 16px; background: var(--paper); }
+.dimension-box > .actions { margin-bottom: 14px; }
+.dimension-box label, .dimension-membership label { display: grid; gap: 6px; min-width: 0; }
+.dimension-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px; margin: 12px 0; }
+.dimension-editor { margin-top: 18px; padding: 16px; border: 1.5px solid var(--light-line); border-radius: 12px; min-width: 0; }
+.dimension-editor fieldset { margin: 16px 0; padding: 12px; border: 1px solid var(--light-line); border-radius: 10px; min-width: 0; }
+.dimension-option { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 10px 0; }
+.dimension-option label { flex: 1; min-width: 140px; }
+.folder-list article { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--light-line); }
+.folder-list article > div:first-child { flex: 1; min-width: 160px; }
+.folder-list small, .dimension-saved small { display: block; color: var(--muted); }
+.folder-list p { margin: 5px 0; white-space: pre-wrap; }
+.dimension-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 10px 20px; margin: 16px 0; }
+.dimension-field { min-width: 0; }
+.dimension-box .dimension-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dimension-check input { width: auto; }
+.dimension-saved { border-top: 1px solid var(--light-line); padding: 14px 0; overflow-wrap: anywhere; }
+.dimension-saved .actions { margin-top: 8px; }
+.dimension-error { color: var(--danger, #b33434); white-space: pre-wrap; overflow-wrap: anywhere; }
+.item-dimension { margin-top: 0; }
+.item-dimension summary { cursor: pointer; padding: 10px 0; }
+.item-dimension .actions { margin: 12px 0; }
+.dimension-summary { padding: 14px; margin: 16px 0; background: var(--paper); border-left: 3px solid currentColor; overflow-wrap: anywhere; }
+.dimension-summary p { white-space: pre-wrap; max-height: 160px; overflow: auto; }
+.dimension-transfer { background: var(--paper); }
+.dimension-box .dimension-check { display: flex; align-items: center; gap: 8px; }
+.dimension-box input[type="checkbox"] { width: auto; }
+.dimension-box button, .dimension-box select, .dimension-box input:not([type="checkbox"]) { min-height: 44px; }
+.dimension-box details { margin: 10px 0; }
+.dimension-result { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.dimension-result th, .dimension-result td { border-bottom: 1px solid var(--light-line); padding: 8px; text-align: left; overflow-wrap: anywhere; white-space: pre-wrap; vertical-align: top; }
+@media (max-width: 600px) { .item-dimension { padding: 12px; } .dimension-editor { padding: 10px; } .dimension-box .actions > button { flex: 1 1 140px; } }

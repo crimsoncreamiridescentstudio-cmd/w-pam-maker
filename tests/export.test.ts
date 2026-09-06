@@ -1,6 +1,6 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { renderPages } from "../src/export";
-import { blank, entitySchema } from "../src/model";
+import { blank, entitySchema, contentSchema, recordOverrideSchema, relationOverrideSchema } from "../src/model";
 afterEach(() => vi.unstubAllGlobals());
 function mockCanvas() {
   const drawn: { text: string; y: number }[] = [];
@@ -84,4 +84,21 @@ it("exports display names, formal names, relations and reference labels", async 
   expect(text).toContain("智咲の世界");
   expect(text).toContain("智咲");
   expect(text.some((value) => value.includes("[["))).toBe(false);
+});
+
+
+it("exports resolved Dimension content without hidden entities or relations", async () => {
+  const { resolveContent } = await import("../src/dimensions");
+  const drawn = mockCanvas();
+  const world = blank("世界");
+  const a = entitySchema.parse({ ...blank("主人公"), kind: "character", worldId: world.id, summary: "基本の概要" });
+  const b = entitySchema.parse({ ...blank("非掲載の研究所"), kind: "location", worldId: world.id });
+  const conditions = [{ axisId: "line", optionId: "back" }];
+  a.overrides = [recordOverrideSchema.parse({id:"a",conditions,patch:{summary:"差分の概要"}})];
+  b.overrides = [recordOverrideSchema.parse({id:"b",conditions,patch:{visible:false}})];
+  const content = contentSchema.parse({world,entities:[a,b],relations:[{id:"r",from:a.id,to:b.id,type:"秘密の関係",direction:"mutual",note:"",createdAt:world.createdAt,updatedAt:world.updatedAt}]});
+  await renderPages(resolveContent(content,{line:"back"}),{kinds:["character","location"],logo:false,separate:true,width:794});
+  const text = drawn.map(x => x.text).join("\n");
+  expect(text).toContain("差分の概要");
+  expect(text).not.toContain("基本の概要"); expect(text).not.toContain("非掲載の研究所"); expect(text).not.toContain("秘密の関係");
 });
