@@ -63,6 +63,7 @@ export async function mutate(
   revision: number,
   fn: (s: State) => void,
   assets: ImageAsset[] = [],
+  options: { pruneUnusedImages?: boolean } = {},
 ): Promise<State> {
   const conn = await db;
   const tx = conn.transaction(["state", "images"], "readwrite");
@@ -83,6 +84,12 @@ export async function mutate(
     s.revision++;
     await tx.objectStore("state").put(s, "main");
     for (const asset of assets) await tx.objectStore("images").put(asset);
+    if (options.pruneUnusedImages) {
+      const referenced = imageRefs(s.worlds);
+      const imageStore = tx.objectStore("images");
+      for (const key of await imageStore.getAllKeys())
+        if (!referenced.has(String(key))) await imageStore.delete(key);
+    }
     await tx.done;
     return s;
   } catch (error) {
@@ -94,6 +101,23 @@ export async function mutate(
     await tx.done.catch(() => {});
     throw error;
   }
+}
+
+export function permanentlyDeleteWorld(revision: number, worldId: string) {
+  return mutate(
+    revision,
+    (s) => {
+      const index = s.worlds.findIndex(
+        (w) => w.content.world.id === worldId,
+      );
+      if (index < 0) throw new Error("削除する世界が見つかりません");
+      if (!s.worlds[index].trashed)
+        throw new Error("完全削除できるのはごみ箱の世界だけです");
+      s.worlds.splice(index, 1);
+    },
+    [],
+    { pruneUnusedImages: true },
+  );
 }
 const thumbnailUpgrades = new Map<string, Promise<ImageAsset>>();
 async function resizeBlob(blob: Blob, max: number, quality = 0.9) {
@@ -296,7 +320,10 @@ export async function parseBackup(file: File) {
       }
   return { worlds: b.worlds, worldFolders: b.worldFolders, assets };
 }
-export function importedCopy(w: World): World {
+export function importedCopy(
+  w: World,
+  options: { preserveTrash?: boolean } = {},
+): World {
   const result = structuredClone(w);
   const ids = new Map<string, string>();
   const map = (id: string) => {
@@ -331,8 +358,33 @@ export function importedCopy(w: World): World {
     }
   }
   for (const s of result.snapshots) s.id = uuid();
-  result.trashed = false;
+  if (!options.preserveTrash) result.trashed = false;
   return result;
+}
+
+export function applyWorldImports(
+  state: State,
+  worlds: World[],
+  mode: "copy" | "replace",
+) {
+  for (const world of worlds) {
+    const index = state.worlds.findIndex(
+      (current) => current.content.world.id === world.content.world.id,
+    );
+    if (mode === "replace") {
+      if (index >= 0) {
+        const safety = importedCopy(state.worlds[index]);
+        safety.content.world.name += "（読み込み前の安全コピー）";
+        safety.trashed = true;
+        state.worlds.push(safety);
+        state.worlds[index] = world;
+      } else {
+        state.worlds.push(world);
+      }
+    } else {
+      state.worlds.push(importedCopy(world, { preserveTrash: true }));
+    }
+  }
 }
 export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
