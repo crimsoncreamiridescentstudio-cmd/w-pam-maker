@@ -13,6 +13,8 @@ import { asset, download } from "./db";
 
 export type ExportOptions = {
   kinds: Kind[];
+  entityIds?: string[];
+  template?: "encyclopedia" | "character" | "tourism" | "setting";
   logo: boolean;
   separate: boolean;
   width: number;
@@ -43,6 +45,13 @@ export async function renderPages(
   let y = 0;
   const margin = 56,
     bottom = 1050;
+  const themes = {
+    encyclopedia: { bg: "#FFFBF1", accent: "#E9A928", title: "WORLD ENCYCLOPEDIA" },
+    character: { bg: "#FFF8F4", accent: "#D9785F", title: "CHARACTER SHEET" },
+    tourism: { bg: "#F5FBF8", accent: "#7FA58A", title: "TRAVEL PAMPHLET" },
+    setting: { bg: "#F8F7FC", accent: "#7D78A8", title: "WORLD SETTING FILE" },
+  } as const;
+  const theme = themes[options.template || "encyclopedia"];
   const newPage = () => {
     if (pages.length >= 24)
       throw new Error(
@@ -53,9 +62,9 @@ export async function renderPages(
     c.height = height;
     ctx = c.getContext("2d")!;
     ctx.scale(scale, scale);
-    ctx.fillStyle = "#FFFBF1";
+    ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, 794, 1123);
-    ctx.fillStyle = "#E9A928";
+    ctx.fillStyle = theme.accent;
     ctx.fillRect(0, 0, 794, 12);
     ctx.fillStyle = "#776457";
     ctx.font = '500 13px "Zen Kaku Gothic Antique"';
@@ -132,6 +141,12 @@ export async function renderPages(
       line(plainText(text));
       y += 12;
     }
+    for (const field of r.customFields || []) {
+      if (!field.value) continue;
+      line(field.label, '700 15px "Zen Kaku Gothic Antique"', "#776457", 28);
+      line(plainText(field.value));
+      y += 12;
+    }
     const related = content.entities.filter((entity) =>
       r.relatedIds.includes(entity.id),
     );
@@ -140,11 +155,21 @@ export async function renderPages(
       line(related.map(shownName).join("・"));
       y += 12;
     }
+    const relations = (content.relations || []).filter((relation) => relation.from === r.id || relation.to === r.id);
+    if (relations.length) {
+      line("関係性", '700 15px "Zen Kaku Gothic Antique"', "#776457", 28);
+      line(relations.map((relation) => {
+        const otherId = relation.from === r.id ? relation.to : relation.from;
+        const other = content.entities.find((entity) => entity.id === otherId);
+        return other ? `${relation.type}${relation.direction === "mutual" ? " ↔ " : relation.from === r.id ? " → " : " ← "}${shownName(other)}` : "";
+      }).filter(Boolean).join(" ／ "));
+      y += 12;
+    }
   };
   newPage();
-  await entry(content.world, "WORLD PAMPHLET");
+  await entry(content.world, theme.title);
   for (const e of content.entities.filter((e) =>
-    options.kinds.includes(e.kind),
+    options.kinds.includes(e.kind) && (options.entityIds || content.entities.map((entity) => entity.id)).includes(e.id),
   )) {
     if (options.separate || y > bottom - 150) newPage();
     else y += 35;

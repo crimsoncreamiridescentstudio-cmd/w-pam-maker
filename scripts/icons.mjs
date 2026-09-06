@@ -33,3 +33,4 @@ for(const pkg of ['@fontsource/aoboshi-one','@fontsource/kaisei-opti','@fontsour
   for(const name of names)credits.push(`${pkg} — ${name}\n${await fs.readFile(`${dir}/${name}`,'utf8')}`);
 }
 await fs.writeFile('public/third-party-licenses.txt',credits.join('\n\n--------------------\n\n'));
+

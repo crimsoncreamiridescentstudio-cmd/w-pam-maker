@@ -9,3 +9,4 @@ for(const name of ['sw.js','icon.svg','apple-touch-icon.png','og.png'])await fs.
 for(const m of html.matchAll(/(?:src|href)="(\.\/[^"?]+)"/g))await fs.access(path.join('dist',m[1]));
 const sw=await fs.readFile('dist/sw.js','utf8');assert(sw.includes('woff2'));assert(sw.includes('index.html'));assert(!sw.includes('fonts.googleapis.com'));
 console.log('Built entrypoints, PWA manifest, icons, local references and offline font precache: passed');
+

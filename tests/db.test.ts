@@ -35,6 +35,19 @@ it("atomic save persists content and blobs; stale writers fail without overwriti
   expect(restored.worlds[0].snapshots[0].content.world.name).toBe("新");
   expect(restored.worlds[0].content.world.name).toBe("保存テスト");
 });
+it("persists every UI setting together", async () => {
+  const before = await readState();
+  await mutate(before.revision, (s) => {
+    s.settings.font = 1.25;
+    s.settings.density = 1.2;
+    s.settings.theme = "dark";
+  });
+  expect((await readState()).settings).toMatchObject({
+    font: 1.25,
+    density: 1.2,
+    theme: "dark",
+  });
+});
 it("malformed imports leave live database untouched", async () => {
   const before = await readState();
   await expect(parseBackup(new File(["{}"], "bad.json"))).rejects.toThrow();

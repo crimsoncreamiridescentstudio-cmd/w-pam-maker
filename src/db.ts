@@ -5,9 +5,13 @@ import {
   type World,
   imageRefs,
   worldSchema,
+  worldFolderSchema,
+  type WorldFolder,
   uuid,
 } from "./model";
 import { z } from "zod";
+import { normalizeState, validateDimensions } from "./dimensions";
+export { normalizeState } from "./dimensions";
 
 export type ImageAsset = {
   id: string;
@@ -24,19 +28,6 @@ export const db = openDB("w-pam", 1, {
     window.dispatchEvent(new Event("wpam-blocked"));
   },
 });
-const normalizeState = (raw?: Partial<State>): State => {
-  const fallback = initialState();
-  if (!raw) return fallback;
-  return {
-    schemaVersion: 1,
-    revision: Number.isInteger(raw.revision) ? Number(raw.revision) : 0,
-    worlds: z
-      .array(worldSchema)
-      .max(100)
-      .parse(raw.worlds || []),
-    settings: { ...fallback.settings, ...(raw.settings || {}) },
-  };
-};
 const validateRelations = (worlds: World[]) => {
   for (const w of worlds)
     for (const content of [w.content, ...w.snapshots.map((s) => s.content)]) {
@@ -44,6 +35,25 @@ const validateRelations = (worlds: World[]) => {
       for (const record of [content.world, ...content.entities])
         if (record.relatedIds.some((id) => !ids.has(id) || id === record.id))
           throw new Error("存在しない項目、または自分自身への関連があります");
+      for (const entity of content.entities)
+        if (
+          entity.parentId &&
+          (!ids.has(entity.parentId) || entity.parentId === entity.id)
+        )
+          throw new Error("親項目の指定が不正です");
+      for (const relation of content.relations || [])
+        if (
+          !ids.has(relation.from) ||
+          !ids.has(relation.to) ||
+          relation.from === relation.to
+        )
+          throw new Error("関係性の参照先が不正です");
+      for (const collection of content.collections || [])
+        if (collection.entityIds.some((id) => !ids.has(id)))
+          throw new Error("グループの参照先が不正です");
+      for (const event of content.events || [])
+        if (event.entityIds.some((id) => !ids.has(id)))
+          throw new Error("出来事の参照先が不正です");
     }
 };
 export async function readState(): Promise<State> {
@@ -69,6 +79,7 @@ export async function mutate(
       throw new Error("世界は安全コピー・ごみ箱を含め100件までです。");
     for (const w of s.worlds) worldSchema.parse(w);
     validateRelations(s.worlds);
+    validateDimensions(s);
     s.revision++;
     await tx.objectStore("state").put(s, "main");
     for (const asset of assets) await tx.objectStore("images").put(asset);
@@ -193,12 +204,14 @@ const imageSchema = z.object({
 });
 export const backupSchema = z.object({
   format: z.literal("w-pam-backup"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  worldFolders: z.array(worldFolderSchema).max(100).default([]),
   exportedAt: z.string().datetime(),
   worlds: z.array(worldSchema).max(100),
   images: z.array(imageSchema).max(10000),
 });
-export async function backup(worlds: World[]) {
+export async function backup(worlds: World[], worldFolders: WorldFolder[] = []) {
+  validateDimensions({ worlds, worldFolders });
   const images = [];
   for (const id of imageRefs(worlds)) {
     const a = await asset(id);
@@ -210,7 +223,8 @@ export async function backup(worlds: World[]) {
   }
   return {
     format: "w-pam-backup",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    worldFolders: structuredClone(worldFolders),
     exportedAt: new Date().toISOString(),
     worlds: structuredClone(worlds),
     images,
@@ -221,7 +235,21 @@ export async function parseBackup(file: File) {
     throw new Error(
       "読み込めるバックアップは100MBまでです。世界ごとに分けてください。",
     );
-  const b = backupSchema.parse(JSON.parse(await file.text()));
+  const raw = JSON.parse(await file.text());
+  const b = backupSchema.parse(raw);
+  // Empty v0.2 collections remain absent in the returned copy; importing still
+  // normalizes them on the next state read. This keeps old backup round trips exact.
+  b.worlds.forEach((world, worldIndex) => {
+    const rawWorld = raw.worlds?.[worldIndex];
+    for (const [content, rawContent] of [
+      [world.content, rawWorld?.content],
+      ...world.snapshots.map((item, index) => [item.content, rawWorld?.snapshots?.[index]?.content]),
+    ] as const) {
+      if (rawContent && !("relations" in rawContent)) delete (content as Partial<typeof content>).relations;
+      if (rawContent && !("collections" in rawContent)) delete (content as Partial<typeof content>).collections;
+      if (rawContent && !("events" in rawContent)) delete (content as Partial<typeof content>).events;
+    }
+  });
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
     !unique(b.worlds.map((w) => w.content.world.id)) ||
@@ -241,6 +269,7 @@ export async function parseBackup(file: File) {
     }
   }
   validateRelations(b.worlds);
+  validateDimensions(b);
   const ids = new Set(b.images.map((i) => i.id));
   if ([...imageRefs(b.worlds)].some((id) => !ids.has(id)))
     throw new Error("バックアップに必要な画像が不足しています");
@@ -265,7 +294,7 @@ export async function parseBackup(file: File) {
           }),
         );
       }
-  return { worlds: b.worlds, assets };
+  return { worlds: b.worlds, worldFolders: b.worldFolders, assets };
 }
 export function importedCopy(w: World): World {
   const result = structuredClone(w);
@@ -275,6 +304,9 @@ export function importedCopy(w: World): World {
     return ids.get(id)!;
   };
   for (const c of [result.content, ...result.snapshots.map((s) => s.content)]) {
+    c.relations ||= [];
+    c.collections ||= [];
+    c.events ||= [];
     c.world.id = map(c.world.id);
     for (const e of c.entities) {
       e.id = map(e.id);
@@ -282,6 +314,21 @@ export function importedCopy(w: World): World {
     }
     for (const record of [c.world, ...c.entities])
       record.relatedIds = record.relatedIds.map(map);
+    for (const entity of c.entities)
+      entity.parentId = entity.parentId ? map(entity.parentId) : "";
+    for (const relation of c.relations || []) {
+      relation.id = uuid();
+      relation.from = map(relation.from);
+      relation.to = map(relation.to);
+    }
+    for (const collection of c.collections || []) {
+      collection.id = uuid();
+      collection.entityIds = collection.entityIds.map(map);
+    }
+    for (const event of c.events || []) {
+      event.id = uuid();
+      event.entityIds = event.entityIds.map(map);
+    }
   }
   for (const s of result.snapshots) s.id = uuid();
   result.trashed = false;
