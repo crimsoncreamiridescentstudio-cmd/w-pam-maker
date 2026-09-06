@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import sharp from 'sharp';
 const html=await fs.readFile('dist/index.html','utf8');
 const manifest=JSON.parse(await fs.readFile('dist/manifest.webmanifest','utf8'));
 assert.equal(manifest.short_name,'W-Pam');assert.equal(manifest.display,'standalone');
 for(const icon of manifest.icons)await fs.access(path.join('dist',icon.src));
 for(const name of ['sw.js','icon.svg','apple-touch-icon.png','og.png'])await fs.access('dist/'+name);
+const socialPreview=await sharp('dist/og.png').metadata();
+assert.equal(socialPreview.format,'png');assert.equal(socialPreview.width,1200);assert.equal(socialPreview.height,630);
+assert(html.includes('property="og:image"'));assert(html.includes('content="1200"'));assert(html.includes('name="twitter:card"'));
 for(const m of html.matchAll(/(?:src|href)="(\.\/[^"?]+)"/g))await fs.access(path.join('dist',m[1]));
 const sw=await fs.readFile('dist/sw.js','utf8');assert(sw.includes('woff2'));assert(sw.includes('index.html'));assert(!sw.includes('fonts.googleapis.com'));
 console.log('Built entrypoints, PWA manifest, icons, local references and offline font precache: passed');
-
