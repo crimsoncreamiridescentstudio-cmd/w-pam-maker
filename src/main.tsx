@@ -87,6 +87,7 @@ import {
 } from "./db";
 import { renderPages, savePNG, savePDF, type ExportOptions } from "./export";
 import { WorkspaceTools } from "./workspace";
+import { TipsContent } from "./tips";
 import { FolderManager, FolderMembership, DimensionPanel, ItemDimensionPanel, OverrideEditor, confirmDimensionLeave } from "./dimension-ui";
 import { resolveContent, resolveRecord, validSelection, mergeFolderImports, dimensionLabel } from "./dimensions";
 import { type DimensionSelection, type WorldFolder } from "./model";
@@ -1134,7 +1135,7 @@ function ExportDialog({
   );
 }
 type ModalState =
-  | { type: "settings" | "tutorial" | "history" | "snapshot" }
+  | { type: "settings" | "tutorial" | "tips" | "history" | "snapshot" }
   | { type: "export"; content?: Content }
   | {
       type: "editor";
@@ -1294,11 +1295,12 @@ function App() {
           <div className="actions">
             <span className="preview-tag">PREVIEW 0.3</span>
             <button
-              className="icon-button"
-              aria-label="チュートリアル"
-              onClick={() => setModal({ type: "tutorial" })}
+              className="button header-tips"
+              aria-label="Tips・使い方を開く"
+              onClick={() => setModal({ type: "tips" })}
             >
               <HelpCircle />
+              <span>Tips・使い方</span>
             </button>
             <button
               className="icon-button"
@@ -2001,6 +2003,11 @@ function App() {
               })
             }
           />
+        )}
+        {modal?.type === "tips" && (
+          <Modal title="Tips・使い方" close={close} wide>
+            <TipsContent />
+          </Modal>
         )}
         {modal?.type === "import" && (
           <Modal title="バックアップを読み込む" close={() => !busy && close()}>

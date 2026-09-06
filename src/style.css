@@ -918,6 +918,165 @@ dialog::backdrop {
   justify-content: center;
   margin-top: 30px;
 }
+.tips-page {
+  display: grid;
+  gap: 20px;
+}
+.tips-intro {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  border: 1.5px solid var(--light-line);
+  border-radius: 16px;
+  background: var(--sub);
+}
+.tips-intro > svg {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  color: #a87818;
+}
+.tips-intro h3,
+.tips-intro p {
+  margin: 0;
+}
+.tips-search {
+  margin: 0;
+}
+.tips-search > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+}
+.tips-search input {
+  width: 100%;
+}
+.tips-categories {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: thin;
+}
+.tips-categories button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1.5px solid var(--light-line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-weight: 700;
+}
+.tips-categories button[aria-pressed="true"] {
+  border-color: var(--line);
+  background: var(--gold);
+  color: #49382d;
+}
+.tips-count {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.tips-groups {
+  display: grid;
+  gap: 26px;
+}
+.tips-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+}
+.tips-group-heading > svg {
+  width: 28px;
+  height: 28px;
+  color: #a87818;
+}
+.tips-group-heading h3,
+.tips-group-heading small {
+  display: block;
+  margin: 0;
+}
+.tips-list {
+  display: grid;
+  gap: 9px;
+}
+.tips-list details {
+  border: 1.5px solid var(--light-line);
+  border-radius: 13px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.tips-list summary {
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  padding: 13px 44px 13px 15px;
+  position: relative;
+  list-style: none;
+}
+.tips-list summary::-webkit-details-marker {
+  display: none;
+}
+.tips-list summary::after {
+  content: "+";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--muted);
+}
+.tips-list details[open] summary::after {
+  content: "−";
+}
+.tips-list summary span {
+  font-weight: 700;
+}
+.tips-list summary small {
+  line-height: 1.55;
+}
+.tips-list details > p {
+  margin: 0;
+  padding: 13px 15px 16px;
+  border-top: 1px dashed var(--light-line);
+  background: color-mix(in srgb, var(--sub) 55%, var(--paper));
+}
+.tips-empty {
+  padding: 30px 18px;
+  text-align: center;
+  border: 1.5px dashed var(--line);
+  border-radius: 16px;
+}
+.tips-empty > svg {
+  width: 40px;
+  height: 40px;
+  color: var(--muted);
+}
+.tips-empty h3,
+.tips-empty p {
+  margin: 6px 0;
+}
+.tips-safety {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border-left: 4px solid var(--coral);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--coral) 10%, var(--paper));
+}
+.tips-safety svg {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
 .diff-list {
   max-height: 350px;
   overflow: auto;
@@ -1037,6 +1196,24 @@ dialog::backdrop {
   }
   .brand strong {
     font-size: 1.3rem;
+  }
+  .header-tips span {
+    display: none;
+  }
+  .header-tips {
+    width: 44px;
+    padding: 8px;
+  }
+  .tips-intro {
+    align-items: flex-start;
+    padding: 14px;
+  }
+  .tips-intro > svg {
+    width: 36px;
+    height: 36px;
+  }
+  .tips-list summary {
+    padding-left: 13px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
