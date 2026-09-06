@@ -25,6 +25,8 @@ import {
   Copy,
   Trash2,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   X,
   Check,
   HelpCircle,
@@ -85,7 +87,7 @@ import {
   download,
   type ImageAsset,
 } from "./db";
-import { renderPages, savePNG, savePDF, type ExportOptions } from "./export";
+import { orderEntities, renderPages, savePNG, savePDF, type ExportOptions } from "./export";
 import { WorkspaceTools } from "./workspace";
 import { TipsContent } from "./tips";
 import { FolderManager, FolderMembership, DimensionPanel, ItemDimensionPanel, OverrideEditor, confirmDimensionLeave } from "./dimension-ui";
@@ -964,10 +966,17 @@ function ExportDialog({
   content: Content;
   close: () => void;
 }) {
-  type DialogOptions = ExportOptions & { entityIds: string[]; template: NonNullable<ExportOptions["template"]> };
+  type DialogOptions = ExportOptions & {
+    entityIds: string[];
+    entityOrder: string[];
+    order: NonNullable<ExportOptions["order"]>;
+    template: NonNullable<ExportOptions["template"]>;
+  };
   const [options, setOptions] = useState<DialogOptions>({
     kinds: [...kinds],
     entityIds: content.entities.map((entity) => entity.id),
+    entityOrder: content.entities.map((entity) => entity.id),
+    order: "kind",
     template: "encyclopedia",
     logo: true,
     separate: true,
@@ -977,6 +986,7 @@ function ExportDialog({
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [draggedId, setDraggedId] = useState("");
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const boxEl = box.current;
@@ -986,6 +996,23 @@ function ExportDialog({
     setOptions(o);
     setPages([]);
     setIndex(0);
+  };
+  const orderedChoices = orderEntities(content.entities, options.order, options.entityOrder);
+  const moveEntity = (id: string, offset: -1 | 1) => {
+    const order = [...options.entityOrder];
+    const index = order.indexOf(id);
+    const nextIndex = index + offset;
+    if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+    change({ ...options, order: "manual", entityOrder: order });
+  };
+  const dropEntity = (targetId: string) => {
+    if (!draggedId || draggedId === targetId) return setDraggedId("");
+    const order = options.entityOrder.filter((id) => id !== draggedId);
+    const targetIndex = order.indexOf(targetId);
+    order.splice(targetIndex < 0 ? order.length : targetIndex, 0, draggedId);
+    setDraggedId("");
+    change({ ...options, order: "manual", entityOrder: order });
   };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -1032,11 +1059,34 @@ function ExportDialog({
             </label>
           ))}
         </div>
+        <label>
+          パンフレットの出力順
+          <select value={options.order} onChange={(e) => change({ ...options, order: e.target.value as DialogOptions["order"] })}>
+            <option value="kind">種類ごと（キャラ→場所→組織→設定・記事→作品→用語）</option>
+            <option value="registration">登録順</option>
+            <option value="name">名前順</option>
+            <option value="manual">手動で並べ替え</option>
+          </select>
+        </label>
         {!!content.entities.length && <details className="export-selection">
           <summary>出力する項目を個別に選ぶ（{options.entityIds.length}/{content.entities.length}）</summary>
-          <div className="checks">
+          <div className="checks export-select-all">
             <label><input type="checkbox" checked={options.entityIds.length === content.entities.length} onChange={(e) => change({ ...options, entityIds: e.target.checked ? content.entities.map((entity) => entity.id) : [] })} />すべて</label>
-            {content.entities.map((entity) => <label key={entity.id}><input type="checkbox" checked={options.entityIds.includes(entity.id)} onChange={(e) => change({ ...options, entityIds: e.target.checked ? [...options.entityIds, entity.id] : options.entityIds.filter((id) => id !== entity.id) })} />{shownName(entity)}</label>)}
+          </div>
+          <div className="export-order-list">
+            {orderedChoices.map((entity, index) => (
+              <div className="export-order-row" key={entity.id} draggable={options.order === "manual"} onDragStart={() => setDraggedId(entity.id)} onDragEnd={() => setDraggedId("")} onDragOver={(event) => event.preventDefault()} onDrop={() => dropEntity(entity.id)}>
+                {options.order === "manual" && <Move aria-hidden="true" />}
+                <label>
+                  <input type="checkbox" checked={options.entityIds.includes(entity.id)} onChange={(event) => change({ ...options, entityIds: event.target.checked ? [...options.entityIds, entity.id] : options.entityIds.filter((id) => id !== entity.id) })} />
+                  <span>{shownName(entity)} <small>· {labels[entity.kind]}</small></span>
+                </label>
+                {options.order === "manual" && <span className="export-order-actions">
+                  <button type="button" className="icon-button" aria-label={`${shownName(entity)}を上へ`} disabled={index === 0} onClick={() => moveEntity(entity.id, -1)}><ChevronUp /></button>
+                  <button type="button" className="icon-button" aria-label={`${shownName(entity)}を下へ`} disabled={index === orderedChoices.length - 1} onClick={() => moveEntity(entity.id, 1)}><ChevronDown /></button>
+                </span>}
+              </div>
+            ))}
           </div>
         </details>}
         <div className="checks">
