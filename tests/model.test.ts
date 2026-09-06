@@ -12,8 +12,9 @@ import {
   relationCurveOffsets,
   referenceParts,
   entitySchema,
+  initialState,
 } from "../src/model";
-import { backupSchema, importedCopy } from "../src/db";
+import { applyWorldImports, backupSchema, importedCopy } from "../src/db";
 const world = () => ({
   content: { world: blank("テスト世界"), entities: [] },
   snapshots: [],
@@ -73,6 +74,42 @@ describe("world history", () => {
     const copy = importedCopy({ ...w, snapshots: [snapshot(w.content)] });
     expect(copy.snapshots[0].content.world.id).toBe(copy.content.world.id);
     expect(copy.content.world.id).not.toBe(w.content.world.id);
+  });
+  it("can preserve trash placement when importing a backup as a copy", () => {
+    const w = { ...world(), trashed: true };
+    expect(importedCopy(w).trashed).toBe(false);
+    expect(importedCopy(w, { preserveTrash: true }).trashed).toBe(true);
+  });
+  it("imports trashed backups into trash when adding them as copies", () => {
+    const state = initialState();
+    const imported = { ...world(), trashed: true };
+    applyWorldImports(state, [imported], "copy");
+    expect(state.worlds[0].trashed).toBe(true);
+    expect(state.worlds[0].content.world.id).not.toBe(
+      imported.content.world.id,
+    );
+  });
+  it("replaces matching IDs and moves the previous world to trash", () => {
+    const state = initialState();
+    const current = world();
+    const imported = structuredClone(current);
+    current.content.world.name = "現在版";
+    imported.content.world.name = "バックアップ版";
+    state.worlds.push(current);
+    applyWorldImports(state, [imported], "replace");
+    expect(
+      state.worlds.find(
+        (w) => w.content.world.id === imported.content.world.id,
+      )?.content.world.name,
+    ).toBe("バックアップ版");
+    expect(
+      state.worlds.find(
+        (w) => w.content.world.id !== imported.content.world.id,
+      ),
+    ).toMatchObject({
+        trashed: true,
+        content: { world: { name: "現在版（読み込み前の安全コピー）" } },
+      });
   });
   it("loads old records with safe defaults for new display features", () => {
     const old = blank("旧データ") as unknown as Record<string, unknown>;

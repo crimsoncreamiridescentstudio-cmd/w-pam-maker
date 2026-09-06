@@ -1,5 +1,12 @@
 import { it, expect } from "vitest";
-import { readState, mutate, asset, backup, parseBackup } from "../src/db";
+import {
+  readState,
+  mutate,
+  asset,
+  backup,
+  parseBackup,
+  permanentlyDeleteWorld,
+} from "../src/db";
 import { blank, snapshot } from "../src/model";
 import { importedCopy } from "../src/db";
 it("atomic save persists content and blobs; stale writers fail without overwriting", async () => {
@@ -79,6 +86,45 @@ it("complete text/history backup round trip preserves versions and memos", async
   const copied = importedCopy(parsed.worlds[0]);
   await mutate(before.revision, (s) => s.worlds.push(copied));
   expect((await readState()).worlds.at(-1)!.snapshots[0].version).toBe("1.21");
+});
+it("permanently deletes only trashed worlds and prunes only orphaned images", async () => {
+  const before = await readState();
+  const shared = new Blob(["shared"], { type: "image/webp" });
+  const unique = new Blob(["unique"], { type: "image/webp" });
+  const kept = blank("残す世界");
+  kept.imageIds = ["shared-image"];
+  const removed = blank("消す世界");
+  removed.imageIds = ["shared-image", "unique-image"];
+  const saved = await mutate(
+    before.revision,
+    (s) => {
+      s.worlds.push(
+        {
+          content: { world: kept, entities: [] },
+          snapshots: [],
+          trashed: false,
+        },
+        {
+          content: { world: removed, entities: [] },
+          snapshots: [],
+          trashed: true,
+        },
+      );
+    },
+    [
+      { id: "shared-image", blob: shared, thumbnail: shared },
+      { id: "unique-image", blob: unique, thumbnail: unique },
+    ],
+  );
+  await expect(
+    permanentlyDeleteWorld(saved.revision, kept.id),
+  ).rejects.toThrow("ごみ箱");
+  const deleted = await permanentlyDeleteWorld(saved.revision, removed.id);
+  expect(deleted.worlds.some((w) => w.content.world.id === removed.id)).toBe(
+    false,
+  );
+  expect(await asset("shared-image")).toBeTruthy();
+  expect(await asset("unique-image")).toBeUndefined();
 });
 it("transaction failure does not alter current state", async () => {
   const before = await readState();

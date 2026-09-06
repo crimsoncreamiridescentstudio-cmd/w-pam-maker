@@ -80,7 +80,8 @@ import {
   prepareImage,
   backup,
   parseBackup,
-  importedCopy,
+  applyWorldImports,
+  permanentlyDeleteWorld,
   download,
   type ImageAsset,
 } from "./db";
@@ -1216,6 +1217,13 @@ function App() {
   const baseContent = preview || selected?.content;
   const content = baseContent ? resolveContent(baseContent, activeSelection) : undefined;
   const modal = storedModal && (storedModal.type === "detail" || storedModal.type === "reference") ? {...storedModal, record: content?.entities.find(e => e.id === storedModal.record.id) || resolveRecord(baseContent?.entities.find(e => e.id === storedModal.record.id) || storedModal.record, activeSelection)} : storedModal;
+  const importCollisionCount = modal?.type === "import"
+    ? modal.worlds.filter((w) =>
+        state?.worlds.some(
+          (current) => current.content.world.id === w.content.world.id,
+        ),
+      ).length
+    : 0;
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -2008,7 +2016,10 @@ function App() {
               ))}
             </ul>
             <p>
-              「別の世界として追加」が標準です。「同じIDを置換」では、置換前の世界を安全コピーとして本棚へ残します。既存の別世界は削除しません。
+              「別の世界として追加」が標準です。バックアップ時点でごみ箱にあった世界は、ごみ箱へ読み込みます。
+            </p>
+            <p>
+              同じ世界の重複：{importCollisionCount}件。「バックアップで上書き」では同じIDの現在データを置き換え、置換前の状態は安全コピーとしてごみ箱へ残します。
             </p>
             <div className="actions">
               {[false, true].map((replace) => (
@@ -2021,23 +2032,21 @@ function App() {
                       if (
                         replace &&
                         !confirm(
-                          "同じIDの世界を置換しますか？置換前の安全コピーを本棚に残します。",
+                          "バックアップの内容で同じIDの世界を上書きしますか？置換前の安全コピーはごみ箱に残します。",
                         )
                       )
                         return;
                       await save((s) => {
-                        for (const w of mergeFolderImports(s, modal.worldFolders, modal.worlds)) {
-                          const i = s.worlds.findIndex(
-                            (x) => x.content.world.id === w.content.world.id,
-                          );
-                          if (replace && i >= 0) {
-                            const safety = importedCopy(s.worlds[i]);
-                            safety.content.world.name +=
-                              "（読み込み前の安全コピー）";
-                            s.worlds.push(safety);
-                            s.worlds[i] = w;
-                          } else s.worlds.push(importedCopy(w));
-                        }
+                        const worlds = mergeFolderImports(
+                          s,
+                          modal.worldFolders,
+                          modal.worlds,
+                        );
+                        applyWorldImports(
+                          s,
+                          worlds,
+                          replace ? "replace" : "copy",
+                        );
                       }, modal.assets);
                       close();
                       openWorld("");
@@ -2045,7 +2054,7 @@ function App() {
                     })
                   }
                 >
-                  {replace ? "同じIDを置換" : "別の世界として追加"}
+                  {replace ? "バックアップで同じIDを上書き" : "別の世界として追加"}
                 </B>
               ))}
             </div>
@@ -2187,6 +2196,29 @@ function App() {
                     }
                   >
                     本棚に戻す
+                  </B>
+                  <B
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        !confirm(
+                          `「${shownName(w.content.world)}」を完全に削除しますか？この操作は取り消せません。必要なら先にバックアップを書き出してください。`,
+                        )
+                      )
+                        return;
+                      run(async () => {
+                        const next = await permanentlyDeleteWorld(
+                          state.revision,
+                          w.content.world.id,
+                        );
+                        setState(next);
+                        if (worldId === w.content.world.id) openWorld("");
+                        setNotice("ごみ箱から完全に削除しました");
+                      });
+                    }}
+                  >
+                    <Trash2 />
+                    完全に削除
                   </B>
                 </div>
               ))}
