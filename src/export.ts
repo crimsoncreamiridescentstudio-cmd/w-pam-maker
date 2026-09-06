@@ -5,6 +5,8 @@ import {
   type Kind,
   labels,
   fields,
+  shownName,
+  referenceParts,
   type RecordData,
 } from "./model";
 import { asset, download } from "./db";
@@ -30,6 +32,10 @@ export async function renderPages(
     document.fonts.load('400 24px "Aoboshi One"', "W-Pam"),
   ]);
   const pages: HTMLCanvasElement[] = [];
+  const plainText = (value: string) =>
+    referenceParts(value)
+      .map((part) => part.label || part.raw)
+      .join("");
   const width = options.width,
     height = Math.round((width * 297) / 210),
     scale = width / 794;
@@ -53,7 +59,7 @@ export async function renderPages(
     ctx.fillRect(0, 0, 794, 12);
     ctx.fillStyle = "#776457";
     ctx.font = '500 13px "Zen Kaku Gothic Antique"';
-    ctx.fillText(content.world.name.slice(0, 40), margin, 40);
+    ctx.fillText(shownName(content.world).slice(0, 40), margin, 40);
     ctx.fillText(String(pages.length + 1).padStart(2, "0"), 710, 1090);
     if (options.logo) {
       ctx.font = '400 18px "Aoboshi One"';
@@ -108,17 +114,30 @@ export async function renderPages(
   };
   const entry = async (r: RecordData, heading: string) => {
     line(heading, '500 14px "Zen Kaku Gothic Antique"', "#776457", 24);
-    line(r.name, '700 32px "Kaisei Opti"', "#49382D", 46);
+    line(shownName(r), '700 32px "Kaisei Opti"', "#49382D", 46);
+    if (r.displayName) {
+      line("正式名称", '700 15px "Zen Kaku Gothic Antique"', "#776457", 28);
+      line(r.name);
+      y += 12;
+    }
     if (r.catchphrase)
-      line(r.catchphrase, '500 22px "Kaisei Opti"', "#785638", 36);
+      line(plainText(r.catchphrase), '500 22px "Kaisei Opti"', "#785638", 36);
     for (const id of r.imageIds) await image(id);
     y += 12;
     for (const [k, v] of Object.entries(fields)) {
-      if (["name", "memo", "catchphrase"].includes(k)) continue;
+      if (["name", "displayName", "memo", "catchphrase"].includes(k)) continue;
       const text = String(r[k as keyof RecordData] || "");
       if (!text) continue;
       line(v, '700 15px "Zen Kaku Gothic Antique"', "#776457", 28);
-      line(text);
+      line(plainText(text));
+      y += 12;
+    }
+    const related = content.entities.filter((entity) =>
+      r.relatedIds.includes(entity.id),
+    );
+    if (related.length) {
+      line("関連項目", '700 15px "Zen Kaku Gothic Antique"', "#776457", 28);
+      line(related.map(shownName).join("・"));
       y += 12;
     }
   };

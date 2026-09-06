@@ -16,7 +16,8 @@ export const labels: Record<Kind, string> = {
   work: "作品",
 };
 export const fields: Record<string, string> = {
-  name: "名前",
+  name: "正式名称",
+  displayName: "表示名・通称",
   reading: "読み",
   catchphrase: "一言紹介",
   summary: "概要",
@@ -34,9 +35,15 @@ export const fields: Record<string, string> = {
   date: "制作日",
 };
 const text = z.string().max(50000);
+export const imagePositionSchema = z.object({
+  x: z.number().min(0).max(100).default(50),
+  y: z.number().min(0).max(100).default(50),
+});
+export type ImagePosition = z.infer<typeof imagePositionSchema>;
 export const recordSchema = z.object({
   id: z.string().min(1).max(100),
   name: z.string().trim().min(1).max(100),
+  displayName: z.string().trim().max(100).default(""),
   reading: text.default(""),
   catchphrase: text.default(""),
   summary: text.default(""),
@@ -60,6 +67,17 @@ export const recordSchema = z.object({
     .default(""),
   date: text.default(""),
   imageIds: z.array(z.string().min(1).max(100)).max(4),
+  imagePositions: z
+    .record(z.string().min(1).max(100), imagePositionSchema)
+    .default({}),
+  relatedIds: z
+    .array(z.string().min(1).max(100))
+    .max(100)
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      "関連項目が重複しています",
+    )
+    .default([]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -116,8 +134,25 @@ export function blank(name = ""): RecordData {
     id: uuid(),
     name: name || "無題",
     imageIds: [],
+    imagePositions: {},
+    relatedIds: [],
     createdAt: now,
     updatedAt: now,
+  });
+}
+export function shownName(record: Pick<RecordData, "name" | "displayName">) {
+  return record.displayName.trim() || record.name;
+}
+export function referenceParts(source: string) {
+  return source.split(/(\[\[[^\]\n]+\]\])/g).map((part) => {
+    const match = part.match(/^\[\[([^|\]]+?)(?:\|([^\]]+))?\]\]$/);
+    return match
+      ? {
+          raw: part,
+          query: match[1].trim(),
+          label: (match[2] || match[1]).trim(),
+        }
+      : { raw: part };
   });
 }
 export function stamp(date = new Date()) {
@@ -151,19 +186,26 @@ export function imageRefs(worlds: World[]) {
 export function duplicateWorld(w: World): World {
   const id = uuid();
   const now = new Date().toISOString();
+  const entityIds = new Map(w.content.entities.map((e) => [e.id, uuid()]));
+  const remapRelations = (ids: string[]) =>
+    ids
+      .map((relatedId) => entityIds.get(relatedId))
+      .filter(Boolean) as string[];
   return {
     content: {
       world: {
         ...structuredClone(w.content.world),
         id,
         name: w.content.world.name + "（複製）",
+        relatedIds: remapRelations(w.content.world.relatedIds),
         createdAt: now,
         updatedAt: now,
       },
       entities: w.content.entities.map((e) => ({
         ...structuredClone(e),
-        id: uuid(),
+        id: entityIds.get(e.id)!,
         worldId: id,
+        relatedIds: remapRelations(e.relatedIds),
         createdAt: now,
         updatedAt: now,
       })),
@@ -199,11 +241,15 @@ export function diff(a: Content, b: Content): Difference[] {
     for (const key of [
       ...Object.keys(fields),
       "imageIds",
+      "imagePositions",
+      "relatedIds",
     ] as (keyof RecordData)[]) {
       if (JSON.stringify(x[key]) !== JSON.stringify(y[key]))
         out.push({
           name: y.name,
-          field: fields[key] || "画像",
+          field:
+            fields[key] ||
+            (key === "relatedIds" ? "関連項目" : "画像・表示位置"),
           before: Array.isArray(x[key]) ? x[key].join(", ") : String(x[key]),
           after: Array.isArray(y[key]) ? y[key].join(", ") : String(y[key]),
           type: "変更",

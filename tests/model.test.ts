@@ -7,6 +7,9 @@ import {
   stamp,
   imageRefs,
   worldSchema,
+  shownName,
+  referenceParts,
+  entitySchema,
 } from "../src/model";
 import { backupSchema, importedCopy } from "../src/db";
 const world = () => ({
@@ -68,5 +71,54 @@ describe("world history", () => {
     const copy = importedCopy({ ...w, snapshots: [snapshot(w.content)] });
     expect(copy.snapshots[0].content.world.id).toBe(copy.content.world.id);
     expect(copy.content.world.id).not.toBe(w.content.world.id);
+  });
+  it("loads old records with safe defaults for new display features", () => {
+    const old = blank("旧データ") as unknown as Record<string, unknown>;
+    delete old.displayName;
+    delete old.imagePositions;
+    delete old.relatedIds;
+    const parsed = worldSchema.parse({
+      content: { world: old, entities: [] },
+      snapshots: [],
+      trashed: false,
+    });
+    expect(parsed.content.world).toMatchObject({
+      name: "旧データ",
+      displayName: "",
+      imagePositions: {},
+      relatedIds: [],
+    });
+  });
+  it("prefers a display name and parses safe inline references", () => {
+    const r = blank("半藤 智咲");
+    r.displayName = "智咲";
+    expect(shownName(r)).toBe("智咲");
+    expect(referenceParts("[[半藤 智咲|智咲]]と[[別項目]]")).toEqual([
+      { raw: "" },
+      { raw: "[[半藤 智咲|智咲]]", query: "半藤 智咲", label: "智咲" },
+      { raw: "と" },
+      { raw: "[[別項目]]", query: "別項目", label: "別項目" },
+      { raw: "" },
+    ]);
+  });
+  it("remaps related items when duplicating a world", () => {
+    const w = world();
+    const a = entitySchema.parse({
+      ...blank("A"),
+      kind: "character",
+      worldId: w.content.world.id,
+    });
+    const b = entitySchema.parse({
+      ...blank("B"),
+      kind: "location",
+      worldId: w.content.world.id,
+      relatedIds: [a.id],
+    });
+    w.content.entities = [a, b];
+    const copy = duplicateWorld(w);
+    expect(copy.content.entities[1].relatedIds).toEqual([
+      copy.content.entities[0].id,
+    ]);
+    expect(copy.content.entities[1].relatedIds).not.toContain(a.id);
   });
 });

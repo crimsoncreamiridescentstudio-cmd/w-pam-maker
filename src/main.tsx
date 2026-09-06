@@ -32,6 +32,8 @@ import {
   GitCompareArrows,
   WifiOff,
   ImagePlus,
+  Link2,
+  Move,
 } from "lucide-react";
 import { registerSW } from "virtual:pwa-register";
 import "@fontsource/aoboshi-one/latin-400.css";
@@ -51,6 +53,8 @@ import {
   diff,
   duplicateWorld,
   stamp,
+  shownName,
+  referenceParts,
   type State,
   type Kind,
   type RecordData,
@@ -58,6 +62,7 @@ import {
   type World,
   type Content,
   type Settings,
+  type ImagePosition,
 } from "./model";
 import {
   readState,
@@ -100,12 +105,20 @@ const B = ({
     {children}
   </button>
 );
-function Photo({ id, thumb = false }: { id: string; thumb?: boolean }) {
+function Photo({
+  id,
+  thumb = false,
+  position,
+}: {
+  id: string;
+  thumb?: boolean;
+  position?: ImagePosition;
+}) {
   const [url, setURL] = useState("");
   useEffect(() => {
     let alive = true;
     let u = "";
-    asset(id).then((a) => {
+    asset(id, thumb).then((a) => {
       if (a && alive) {
         u = URL.createObjectURL(thumb ? a.thumbnail : a.blob);
         setURL(u);
@@ -117,7 +130,12 @@ function Photo({ id, thumb = false }: { id: string; thumb?: boolean }) {
     };
   }, [id, thumb]);
   return url ? (
-    <img src={url} alt="登録された画像" loading="lazy" />
+    <img
+      src={url}
+      alt="登録された画像"
+      loading="lazy"
+      style={{ objectPosition: `${position?.x ?? 50}% ${position?.y ?? 50}%` }}
+    />
   ) : (
     <div className="image-placeholder">
       <Images aria-hidden="true" />
@@ -180,12 +198,14 @@ function EntryEditor({
   onSave,
   close,
   busy,
+  relatedCandidates,
 }: {
   record: RecordData;
   kind?: Kind;
   onSave: (r: RecordData, assets: ImageAsset[]) => Promise<void>;
   close: () => void;
   busy: boolean;
+  relatedCandidates: Entity[];
 }) {
   const [draft, setDraft] = useState({ ...record });
   const [assets, setAssets] = useState<ImageAsset[]>([]);
@@ -212,6 +232,7 @@ function EntryEditor({
   };
   const keys = [
     "name",
+    "displayName",
     ...(kind === "character" ? ["reading"] : []),
     "catchphrase",
     "summary",
@@ -270,7 +291,11 @@ function EntryEditor({
                   <input
                     required={key === "name"}
                     maxLength={
-                      key === "name" ? 100 : key === "url" ? 3000 : 5000
+                      ["name", "displayName"].includes(key)
+                        ? 100
+                        : key === "url"
+                          ? 3000
+                          : 5000
                     }
                     type={
                       key === "url" ? "url" : key === "date" ? "date" : "text"
@@ -285,6 +310,43 @@ function EntryEditor({
               </label>
             ))}
           </div>
+          {relatedCandidates.some((candidate) => candidate.id !== draft.id) && (
+            <fieldset className="related-picker">
+              <legend>
+                <Link2 /> 関連項目
+              </legend>
+              <p className="muted">
+                この項目と一緒に見てほしい人物・場所・組織などを選べます。
+              </p>
+              <div className="related-options">
+                {relatedCandidates
+                  .filter((candidate) => candidate.id !== draft.id)
+                  .map((candidate) => (
+                    <label key={candidate.id}>
+                      <input
+                        type="checkbox"
+                        checked={draft.relatedIds.includes(candidate.id)}
+                        onChange={(event) => {
+                          setDirty(true);
+                          setDraft({
+                            ...draft,
+                            relatedIds: event.target.checked
+                              ? [...draft.relatedIds, candidate.id]
+                              : draft.relatedIds.filter(
+                                  (id) => id !== candidate.id,
+                                ),
+                          });
+                        }}
+                      />
+                      <span>
+                        {shownName(candidate)}
+                        <small>{labels[candidate.kind]}</small>
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </fieldset>
+          )}
           <label className="upload">
             <ImagePlus />
             画像を追加（最大4枚・1枚20MBまで）
@@ -324,14 +386,50 @@ function EntryEditor({
           </p>
           <div className="image-strip">
             {draft.imageIds.map((id, i) => (
-              <div key={id}>
+              <div className="image-position-card" key={id}>
                 {assets.find((a) => a.id === id) ? (
                   <PendingPhoto
                     blob={assets.find((a) => a.id === id)!.thumbnail}
+                    position={draft.imagePositions[id]}
                   />
                 ) : (
-                  <Photo id={id} thumb />
+                  <Photo id={id} thumb position={draft.imagePositions[id]} />
                 )}
+                <fieldset className="position-controls">
+                  <legend>
+                    <Move /> 表示位置
+                  </legend>
+                  {(
+                    [
+                      ["x", "左右"],
+                      ["y", "上下"],
+                    ] as const
+                  ).map(([axis, label]) => (
+                    <label key={axis}>
+                      <span>{label}</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={draft.imagePositions[id]?.[axis] ?? 50}
+                        onChange={(event) => {
+                          setDirty(true);
+                          setDraft({
+                            ...draft,
+                            imagePositions: {
+                              ...draft.imagePositions,
+                              [id]: {
+                                x: draft.imagePositions[id]?.x ?? 50,
+                                y: draft.imagePositions[id]?.y ?? 50,
+                                [axis]: Number(event.target.value),
+                              },
+                            },
+                          });
+                        }}
+                      />
+                    </label>
+                  ))}
+                </fieldset>
                 <B
                   onClick={() => {
                     const ids = [...draft.imageIds];
@@ -345,9 +443,12 @@ function EntryEditor({
                 </B>
                 <B
                   onClick={() => {
+                    const imagePositions = { ...draft.imagePositions };
+                    delete imagePositions[id];
                     setDraft({
                       ...draft,
                       imageIds: draft.imageIds.filter((x) => x !== id),
+                      imagePositions,
                     });
                     setDirty(true);
                   }}
@@ -375,27 +476,106 @@ function EntryEditor({
     </Modal>
   );
 }
-function PendingPhoto({ blob }: { blob: Blob }) {
+function PendingPhoto({
+  blob,
+  position,
+}: {
+  blob: Blob;
+  position?: ImagePosition;
+}) {
   const [url, setURL] = useState("");
   useEffect(() => {
     const u = URL.createObjectURL(blob);
     setURL(u);
     return () => URL.revokeObjectURL(u);
   }, [blob]);
-  return <img src={url} alt="追加予定の画像" />;
+  return (
+    <img
+      src={url}
+      alt="追加予定の画像"
+      style={{ objectPosition: `${position?.x ?? 50}% ${position?.y ?? 50}%` }}
+    />
+  );
 }
-function Details({ r }: { r: RecordData }) {
+function RichText({
+  text,
+  content,
+  openReference,
+}: {
+  text: string;
+  content?: Content;
+  openReference?: (record: Entity) => void;
+}) {
+  return referenceParts(text).map((part, index) => {
+    if (!part.query || !content || !openReference) return part.raw;
+    const matches = content.entities.filter(
+      (entity) =>
+        entity.name === part.query || entity.displayName === part.query,
+    );
+    if (matches.length !== 1)
+      return (
+        <span className="inline-reference unresolved" key={index}>
+          {part.raw}
+        </span>
+      );
+    return (
+      <button
+        type="button"
+        className="inline-reference"
+        key={index}
+        onClick={() => openReference(matches[0])}
+        title={`${shownName(matches[0])}の概要を表示`}
+      >
+        {part.label}
+      </button>
+    );
+  });
+}
+const plainReferencedText = (text: string) =>
+  referenceParts(text)
+    .map((part) => part.label || part.raw)
+    .join("");
+function Details({
+  r,
+  content,
+  openReference,
+}: {
+  r: RecordData;
+  content?: Content;
+  openReference?: (record: Entity) => void;
+}) {
+  const related = content?.entities.filter(
+    (entity) =>
+      r.relatedIds.includes(entity.id) || entity.relatedIds.includes(r.id),
+  );
   return (
     <>
       <div className="gallery">
         {r.imageIds.map((id) => (
-          <Photo key={id} id={id} />
+          <Photo key={id} id={id} position={r.imagePositions[id]} />
         ))}
       </div>
-      {r.catchphrase && <p className="catchphrase">{r.catchphrase}</p>}
+      {r.catchphrase && (
+        <p className="catchphrase rich-text">
+          <RichText
+            text={r.catchphrase}
+            content={content}
+            openReference={openReference}
+          />
+        </p>
+      )}
       <dl>
+        {r.displayName && (
+          <>
+            <dt>正式名称</dt>
+            <dd>{r.name}</dd>
+          </>
+        )}
         {Object.entries(fields)
-          .filter(([k]) => !["name", "catchphrase", "memo"].includes(k))
+          .filter(
+            ([k]) =>
+              !["name", "displayName", "catchphrase", "memo"].includes(k),
+          )
           .map(([k, label]) =>
             r[k as keyof RecordData] ? (
               <React.Fragment key={k}>
@@ -406,13 +586,36 @@ function Details({ r }: { r: RecordData }) {
                       {r.url}
                     </a>
                   ) : (
-                    String(r[k as keyof RecordData])
+                    <RichText
+                      text={String(r[k as keyof RecordData])}
+                      content={content}
+                      openReference={openReference}
+                    />
                   )}
                 </dd>
               </React.Fragment>
             ) : null,
           )}
       </dl>
+      {!!related?.length && (
+        <section className="related-section">
+          <h3>
+            <Link2 /> 関連項目
+          </h3>
+          <div className="related-cards">
+            {related.map((entity) => (
+              <button
+                type="button"
+                key={entity.id}
+                onClick={() => openReference?.(entity)}
+              >
+                <span>{shownName(entity)}</span>
+                <small>{labels[entity.kind]}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {r.memo && (
         <details className="private-note">
           <summary>作者用メモ（画像・PDFには含みません）</summary>
@@ -433,7 +636,11 @@ const steps = [
   ],
   [
     "登場人物や場所を追加",
-    "キャラクター・場所・組織・設定・作品を分類して登録できます。編集後は「保存する」を押してください。",
+    "キャラクター・場所・組織・設定・作品を分類して登録できます。正式名称とは別に表示名・通称も付けられます。編集後は「保存する」を押してください。",
+  ],
+  [
+    "世界をつなげる",
+    "関連項目を選ぶと、項目同士を行き来できます。文章に [[項目名]] または [[項目名|表示文字]] と書くと、タップで概要を開けます。",
   ],
   [
     "ここまでを記録",
@@ -647,7 +854,7 @@ type ModalState =
       isNew: boolean;
       revision: number;
     }
-  | { type: "detail"; record: Entity }
+  | { type: "detail" | "reference"; record: Entity }
   | { type: "import"; worlds: World[]; assets: ImageAsset[] };
 function App() {
   const [state, setState] = useState<State>();
@@ -779,7 +986,7 @@ function App() {
             </span>
           </button>
           <div className="actions">
-            <span className="preview-tag">PREVIEW 0.1</span>
+            <span className="preview-tag">PREVIEW 0.2</span>
             <button
               className="icon-button"
               aria-label="チュートリアル"
@@ -861,7 +1068,15 @@ function App() {
                       >
                         <div className="world-art">
                           {w.content.world.imageIds[0] ? (
-                            <Photo id={w.content.world.imageIds[0]} thumb />
+                            <Photo
+                              id={w.content.world.imageIds[0]}
+                              thumb
+                              position={
+                                w.content.world.imagePositions[
+                                  w.content.world.imageIds[0]
+                                ]
+                              }
+                            />
                           ) : (
                             <>
                               <Map size={52} />
@@ -875,9 +1090,9 @@ function App() {
                           <span className="eyebrow">
                             {w.content.world.genre || "WORLD PAMPHLET"}
                           </span>
-                          <h2>{w.content.world.name}</h2>
+                          <h2>{shownName(w.content.world)}</h2>
                           <p>
-                            {w.content.world.catchphrase ||
+                            {plainReferencedText(w.content.world.catchphrase) ||
                               "まだ見ぬ物語を、この一冊に。"}
                           </p>
                           <small>
@@ -954,7 +1169,7 @@ function App() {
                   <ChevronLeft />
                   世界の本棚
                 </B>
-                <span>{content.world.name}</span>
+                <span>{shownName(content.world)}</span>
               </nav>
               {preview && (
                 <div className="banner">
@@ -965,9 +1180,19 @@ function App() {
               <section className="world-cover">
                 <div>
                   <span className="eyebrow">WORLD PAMPHLET</span>
-                  <h1>{content.world.name}</h1>
+                  <h1>{shownName(content.world)}</h1>
                   <p className="catchphrase">
-                    {content.world.catchphrase || "この世界へ、ようこそ。"}
+                    {content.world.catchphrase ? (
+                      <RichText
+                        text={content.world.catchphrase}
+                        content={content}
+                        openReference={(record) =>
+                          setModal({ type: "reference", record })
+                        }
+                      />
+                    ) : (
+                      "この世界へ、ようこそ。"
+                    )}
                   </p>
                   <div className="tags">
                     {content.world.tags
@@ -998,7 +1223,12 @@ function App() {
                 </div>
                 {content.world.imageIds[0] && (
                   <div className="cover-photo">
-                    <Photo id={content.world.imageIds[0]} />
+                    <Photo
+                      id={content.world.imageIds[0]}
+                      position={
+                        content.world.imagePositions[content.world.imageIds[0]]
+                      }
+                    />
                   </div>
                 )}
               </section>
@@ -1041,6 +1271,10 @@ function App() {
                         ...content.world,
                         imageIds: content.world.imageIds.slice(1),
                       }}
+                      content={content}
+                      openReference={(record) =>
+                        setModal({ type: "reference", record })
+                      }
                     />
                   ) : (
                     <div className="entity-grid">
@@ -1058,7 +1292,11 @@ function App() {
                             >
                               <div className="entity-photo">
                                 {e.imageIds[0] ? (
-                                  <Photo id={e.imageIds[0]} thumb />
+                                  <Photo
+                                    id={e.imageIds[0]}
+                                    thumb
+                                    position={e.imagePositions[e.imageIds[0]]}
+                                  />
                                 ) : (
                                   <Icon size={36} />
                                 )}
@@ -1067,11 +1305,11 @@ function App() {
                                 <span className="eyebrow">
                                   {labels[e.kind]}
                                 </span>
-                                <h3>{e.name}</h3>
+                                <h3>{shownName(e)}</h3>
                                 <p>
-                                  {e.catchphrase ||
-                                    e.summary.slice(0, 100) ||
-                                    "紹介を追加してみましょう。"}
+                                  {plainReferencedText(
+                                    e.catchphrase || e.summary.slice(0, 100),
+                                  ) || "紹介を追加してみましょう。"}
                                 </p>
                               </div>
                             </button>
@@ -1147,6 +1385,7 @@ function App() {
             record={modal.record}
             kind={modal.kind}
             busy={busy}
+            relatedCandidates={selected?.content.entities || []}
             close={close}
             onSave={async (r, assets) => {
               setBusy(true);
@@ -1196,8 +1435,14 @@ function App() {
           />
         )}
         {modal?.type === "detail" && (
-          <Modal title={modal.record.name} close={close} wide>
-            <Details r={modal.record} />
+          <Modal title={shownName(modal.record)} close={close} wide>
+            <Details
+              r={modal.record}
+              content={content}
+              openReference={(record) =>
+                setModal({ type: "reference", record })
+              }
+            />
             <B
               onClick={() =>
                 setModal({
@@ -1236,6 +1481,13 @@ function App() {
                           w.content.entities = w.content.entities.filter(
                             (e) => e.id !== modal.record.id,
                           );
+                          for (const record of [
+                            w.content.world,
+                            ...w.content.entities,
+                          ])
+                            record.relatedIds = record.relatedIds.filter(
+                              (id) => id !== modal.record.id,
+                            );
                           w.content.world.updatedAt = new Date().toISOString();
                         });
                         close();
@@ -1248,6 +1500,49 @@ function App() {
                 </B>
               </div>
             )}
+          </Modal>
+        )}
+        {modal?.type === "reference" && (
+          <Modal title="関連項目の概要" close={close}>
+            <div className="reference-preview">
+              <span className="eyebrow">{labels[modal.record.kind]}</span>
+              <h2>{shownName(modal.record)}</h2>
+              {modal.record.displayName && (
+                <p className="muted">正式名称：{modal.record.name}</p>
+              )}
+              {modal.record.imageIds[0] && (
+                <div className="reference-photo">
+                  <Photo
+                    id={modal.record.imageIds[0]}
+                    thumb
+                    position={
+                      modal.record.imagePositions[modal.record.imageIds[0]]
+                    }
+                  />
+                </div>
+              )}
+              <p>
+                {modal.record.catchphrase || modal.record.summary ? (
+                  <RichText
+                    text={modal.record.catchphrase || modal.record.summary}
+                    content={content}
+                    openReference={(record) =>
+                      setModal({ type: "reference", record })
+                    }
+                  />
+                ) : (
+                  "概要はまだ登録されていません。"
+                )}
+              </p>
+              <B
+                primary
+                onClick={() =>
+                  setModal({ type: "detail", record: modal.record })
+                }
+              >
+                詳細を見る
+              </B>
+            </div>
           </Modal>
         )}
         {modal?.type === "snapshot" && (
@@ -1358,7 +1653,7 @@ function App() {
             <ul>
               {modal.worlds.map((w) => (
                 <li key={w.content.world.id}>
-                  {w.content.world.name}（{w.snapshots.length}記録）
+                  {shownName(w.content.world)}（{w.snapshots.length}記録）
                 </li>
               ))}
             </ul>
@@ -1525,7 +1820,7 @@ function App() {
               .filter((w) => w.trashed)
               .map((w) => (
                 <div className="actions" key={w.content.world.id}>
-                  <span>{w.content.world.name}</span>
+                  <span>{shownName(w.content.world)}</span>
                   <B
                     disabled={busy}
                     onClick={() =>

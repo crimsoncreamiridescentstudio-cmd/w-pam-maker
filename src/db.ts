@@ -9,7 +9,12 @@ import {
 } from "./model";
 import { z } from "zod";
 
-export type ImageAsset = { id: string; blob: Blob; thumbnail: Blob };
+export type ImageAsset = {
+  id: string;
+  blob: Blob;
+  thumbnail: Blob;
+  thumbnailVersion?: number;
+};
 export const db = openDB("w-pam", 1, {
   upgrade(db) {
     db.createObjectStore("state");
@@ -19,8 +24,30 @@ export const db = openDB("w-pam", 1, {
     window.dispatchEvent(new Event("wpam-blocked"));
   },
 });
+const normalizeState = (raw?: Partial<State>): State => {
+  const fallback = initialState();
+  if (!raw) return fallback;
+  return {
+    schemaVersion: 1,
+    revision: Number.isInteger(raw.revision) ? Number(raw.revision) : 0,
+    worlds: z
+      .array(worldSchema)
+      .max(100)
+      .parse(raw.worlds || []),
+    settings: { ...fallback.settings, ...(raw.settings || {}) },
+  };
+};
+const validateRelations = (worlds: World[]) => {
+  for (const w of worlds)
+    for (const content of [w.content, ...w.snapshots.map((s) => s.content)]) {
+      const ids = new Set(content.entities.map((e) => e.id));
+      for (const record of [content.world, ...content.entities])
+        if (record.relatedIds.some((id) => !ids.has(id) || id === record.id))
+          throw new Error("存在しない項目、または自分自身への関連があります");
+    }
+};
 export async function readState(): Promise<State> {
-  return (await (await db).get("state", "main")) || initialState();
+  return normalizeState(await (await db).get("state", "main"));
 }
 export async function mutate(
   revision: number,
@@ -30,8 +57,7 @@ export async function mutate(
   const conn = await db;
   const tx = conn.transaction(["state", "images"], "readwrite");
   try {
-    const s: State =
-      (await tx.objectStore("state").get("main")) || initialState();
+    const s = normalizeState(await tx.objectStore("state").get("main"));
     if (s.revision !== revision) {
       await tx.done;
       throw new Error(
@@ -42,6 +68,7 @@ export async function mutate(
     if (s.worlds.length > 100)
       throw new Error("世界は安全コピー・ごみ箱を含め100件までです。");
     for (const w of s.worlds) worldSchema.parse(w);
+    validateRelations(s.worlds);
     s.revision++;
     await tx.objectStore("state").put(s, "main");
     for (const asset of assets) await tx.objectStore("images").put(asset);
@@ -57,8 +84,56 @@ export async function mutate(
     throw error;
   }
 }
-export async function asset(id: string): Promise<ImageAsset | undefined> {
-  return (await db).get("images", id);
+const thumbnailUpgrades = new Map<string, Promise<ImageAsset>>();
+async function resizeBlob(blob: Blob, max: number, quality = 0.9) {
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  try {
+    img.src = url;
+    await img.decode();
+    const rate = Math.min(1, max / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.width * rate));
+    canvas.height = Math.max(1, Math.round(img.height * rate));
+    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (result) =>
+          result
+            ? resolve(result)
+            : reject(new Error("画像変換に失敗しました")),
+        "image/webp",
+        quality,
+      ),
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+export async function asset(
+  id: string,
+  highQualityThumbnail = false,
+): Promise<ImageAsset | undefined> {
+  const conn = await db;
+  const current = await conn.get("images", id);
+  if (!current || !highQualityThumbnail || current.thumbnailVersion === 2)
+    return current;
+  if (!thumbnailUpgrades.has(id))
+    thumbnailUpgrades.set(
+      id,
+      (async () => {
+        const next = {
+          ...current,
+          thumbnail: await resizeBlob(current.blob, 960),
+          thumbnailVersion: 2,
+        };
+        await conn.put("images", next);
+        return next;
+      })()
+        .catch(() => current)
+        .finally(() => thumbnailUpgrades.delete(id)),
+    );
+  return thumbnailUpgrades.get(id);
 }
 export async function prepareImage(file: File): Promise<ImageAsset> {
   if (file.size > 20 * 1024 * 1024)
@@ -91,7 +166,8 @@ export async function prepareImage(file: File): Promise<ImageAsset> {
     return {
       id: uuid(),
       blob: await resize(1600),
-      thumbnail: await resize(320),
+      thumbnail: await resize(960),
+      thumbnailVersion: 2,
     };
   } catch (e) {
     throw new Error(
@@ -164,6 +240,7 @@ export async function parseBackup(file: File) {
         throw new Error("世界と項目の関連が不正です");
     }
   }
+  validateRelations(b.worlds);
   const ids = new Set(b.images.map((i) => i.id));
   if ([...imageRefs(b.worlds)].some((id) => !ids.has(id)))
     throw new Error("バックアップに必要な画像が不足しています");
@@ -179,8 +256,15 @@ export async function parseBackup(file: File) {
   }
   for (const w of b.worlds)
     for (const c of [w.content, ...w.snapshots.map((s) => s.content)])
-      for (const r of [c.world, ...c.entities])
+      for (const r of [c.world, ...c.entities]) {
         r.imageIds = r.imageIds.map((id) => remap.get(id)!);
+        r.imagePositions = Object.fromEntries(
+          Object.entries(r.imagePositions).flatMap(([id, position]) => {
+            const mapped = remap.get(id);
+            return mapped ? [[mapped, position]] : [];
+          }),
+        );
+      }
   return { worlds: b.worlds, assets };
 }
 export function importedCopy(w: World): World {
@@ -196,6 +280,8 @@ export function importedCopy(w: World): World {
       e.id = map(e.id);
       e.worldId = c.world.id;
     }
+    for (const record of [c.world, ...c.entities])
+      record.relatedIds = record.relatedIds.map(map);
   }
   for (const s of result.snapshots) s.id = uuid();
   result.trashed = false;

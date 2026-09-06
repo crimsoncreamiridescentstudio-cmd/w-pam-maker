@@ -114,3 +114,12 @@ it("asset write failure rolls back the state write in the same transaction", asy
   ).rejects.toThrow();
   expect(await readState()).toEqual(before);
 });
+it("rejects dangling related items without changing saved data", async () => {
+  const before = await readState();
+  await expect(
+    mutate(before.revision, (s) => {
+      s.worlds[0].content.world.relatedIds = ["missing-entity"];
+    }),
+  ).rejects.toThrow("関連");
+  expect(await readState()).toEqual(before);
+});

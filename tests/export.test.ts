@@ -62,3 +62,26 @@ it("stops oversized exports with explicit error", async () => {
     ),
   ).rejects.toThrow("24ページ");
 });
+it("exports display names, formal names, relations and reference labels", async () => {
+  const drawn = mockCanvas();
+  const world = blank("正式世界名");
+  world.displayName = "通称世界";
+  world.catchphrase = "[[半藤 智咲|智咲]]の世界";
+  const character = entitySchema.parse({
+    ...blank("半藤 智咲"),
+    displayName: "智咲",
+    worldId: world.id,
+    kind: "character",
+  });
+  world.relatedIds = [character.id];
+  await renderPages(
+    { world, entities: [character] },
+    { kinds: ["character"], logo: true, separate: true, width: 794 },
+  );
+  const text = drawn.map((item) => item.text);
+  expect(text).toContain("通称世界");
+  expect(text).toContain("正式世界名");
+  expect(text).toContain("智咲の世界");
+  expect(text).toContain("智咲");
+  expect(text.some((value) => value.includes("[["))).toBe(false);
+});
