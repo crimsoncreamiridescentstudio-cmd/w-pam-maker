@@ -14,6 +14,8 @@ describe("Tips", () => {
     expect(filterTips("バックアップ").map((tip) => tip.id)).toContain("json-backup");
     expect(filterTips("限定キャラ").map((tip) => tip.id)).toContain("dimension-visibility");
     expect(filterTips("相関図", "connect").every((tip) => tip.category === "connect")).toBe(true);
+    expect(filterTips("キャラシート").map((tip) => tip.id)).toContain("entity-template-use");
+    expect(filterTips("自作").map((tip) => tip.id)).toContain("entity-template-create");
   });
 
   it("renders the search and the safety guidance", () => {

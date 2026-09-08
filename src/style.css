@@ -932,19 +932,30 @@ dialog::backdrop {
   box-shadow: 0 4px 12px #0003;
 }
 .tutorial {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
   text-align: center;
   padding: 10px 8px;
 }
+.tutorial-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.tutorial-count { color: var(--muted); font-size: .8125rem; font-weight: 700; letter-spacing: .08em; }
+.tutorial-progress { width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: var(--light-line); }
+.tutorial-progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--coral), var(--gold)); transition: width 180ms ease; }
 .tutorial > svg {
   display: block;
   width: 56px;
   height: 56px;
   color: #a87818;
-  margin: 25px auto;
+  margin: 8px auto;
 }
+.tutorial h3, .tutorial p { margin: 0; }
+.tutorial-points { display: grid; gap: 8px; width: 100%; margin: 0; padding: 14px; border: 1.5px solid var(--light-line); border-radius: 14px; background: var(--sub); text-align: left; list-style: none; }
+.tutorial-points li { display: flex; align-items: flex-start; gap: 8px; }
+.tutorial-points svg { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 3px; color: var(--green); }
 .tutorial .actions {
   justify-content: center;
-  margin-top: 30px;
+  margin-top: 14px;
 }
 .tips-page {
   display: grid;
