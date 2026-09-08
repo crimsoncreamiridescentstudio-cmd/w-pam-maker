@@ -114,6 +114,11 @@ import {
 } from "./dimensions";
 import { type DimensionSelection, type WorldFolder } from "./model";
 import {
+  tutorialSteps,
+  tutorialVersion,
+  type TutorialAction,
+} from "./tutorial";
+import {
   instantiateTemplateFields,
   mergeEntityTemplateImports,
   templatesForKind,
@@ -1386,61 +1391,67 @@ function RecordHistory({ world, record }: { world: World; record: Entity }) {
     </details>
   );
 }
-const steps = [
-  [
-    "ようこそ、W-Pamへ",
-    "白紙からつくる創作世界観光パンフ。ログインなしで始められます。データはこのブラウザ・端末だけに保存されます。",
-  ],
-  [
-    "世界をつくる",
-    "「新しい世界」から名前を決めましょう。世界一覧から、いつでもパンフレットを開けます。",
-  ],
-  [
-    "登場人物や場所を追加",
-    "キャラクター・場所・組織・設定・作品を分類して登録できます。正式名称とは別に表示名・通称も付けられます。編集後は「保存する」を押してください。",
-  ],
-  [
-    "世界をつなげる",
-    "関連項目を選ぶと、項目同士を行き来できます。文章に [[項目名]] または [[項目名|表示文字]] と書くと、タップで概要を開けます。",
-  ],
-  [
-    "ここまでを記録",
-    "大切な節目で世界全体を記録。日時番号は自動、1.21や第三稿などのバージョン名は自由です。",
-  ],
-  [
-    "変化を見つめる",
-    "履歴で2地点を比較できます。過去版を眺めたり復元したりできます。復元前の状態も安全記録として残します。",
-  ],
-  [
-    "パンフレットを持ち出す",
-    "書き出しで内容を選び、プレビュー後にPNG・PDFを保存できます。作者用メモは出力されません。",
-  ],
-  [
-    "世界を守る",
-    "JSONは画像・履歴も含む復元用バックアップです。PDFは復元には使えません。端末故障やサイトデータ削除に備え、JSONを「ファイル」などに保管してください。設定からこの案内を再表示できます。",
-  ],
-];
-function Tutorial({ close }: { close: () => void }) {
+function Tutorial({
+  finish,
+}: {
+  finish: (destination?: TutorialAction) => void;
+}) {
   const [step, setStep] = useState(0);
+  const current = tutorialSteps[step];
   return (
-    <Modal title="はじめてのW-Pam" close={close}>
+    <Modal title="はじめてのW-Pam" close={() => finish()}>
       <div className="tutorial">
-        <span className="eyebrow">
-          GUIDE {step + 1} / {steps.length}
-        </span>
+        <div className="tutorial-heading">
+          <span className="eyebrow">{current.section}</span>
+          <span className="tutorial-count">
+            GUIDE {step + 1} / {tutorialSteps.length}
+          </span>
+        </div>
+        <div
+          className="tutorial-progress"
+          role="progressbar"
+          aria-label="チュートリアルの進み具合"
+          aria-valuemin={1}
+          aria-valuemax={tutorialSteps.length}
+          aria-valuenow={step + 1}
+        >
+          <span
+            style={{ width: `${((step + 1) / tutorialSteps.length) * 100}%` }}
+          />
+        </div>
         <BookOpen size={56} />
-        <h3>{steps[step][0]}</h3>
-        <p>{steps[step][1]}</p>
+        <h3>{current.title}</h3>
+        <p>{current.body}</p>
+        {current.points && (
+          <ul className="tutorial-points">
+            {current.points.map((point) => (
+              <li key={point}>
+                <Check aria-hidden="true" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {current.action && (
+          <B onClick={() => finish(current.action?.destination)} primary>
+            {current.action.destination === "templates" ? (
+              <Wrench />
+            ) : (
+              <HelpCircle />
+            )}
+            {current.action.label}
+          </B>
+        )}
         <div className="actions">
-          <B onClick={close}>スキップ</B>
+          <B onClick={() => finish()}>あとで見る</B>
           {step > 0 && <B onClick={() => setStep(step - 1)}>戻る</B>}
           <B
             primary
             onClick={() =>
-              step === steps.length - 1 ? close() : setStep(step + 1)
+              step === tutorialSteps.length - 1 ? finish() : setStep(step + 1)
             }
           >
-            {step === steps.length - 1 ? "始める" : "次へ"}
+            {step === tutorialSteps.length - 1 ? "W-Pamを始める" : "次へ"}
           </B>
         </div>
       </div>
@@ -2060,7 +2071,8 @@ function App() {
     readState()
       .then((s) => {
         setState(s);
-        if (!s.settings.tutorial) setModal({ type: "tutorial" });
+        if (s.settings.tutorial < tutorialVersion)
+          setModal({ type: "tutorial" });
       })
       .catch(() =>
         setError(
@@ -2214,7 +2226,7 @@ function App() {
             </span>
           </button>
           <div className="actions">
-            <span className="preview-tag">PREVIEW 0.7</span>
+            <span className="preview-tag">PREVIEW 0.8</span>
             <button
               className="button header-tips"
               aria-label="Tips・使い方を開く"
@@ -2689,7 +2701,7 @@ function App() {
             </>
           )}
           <footer>
-            W-Pam Preview 0.7 ·
+            W-Pam Preview 0.8 ·
             データはこの端末内に保存されます。同期・オンライン公開は行いません。
           </footer>
         </main>
@@ -3163,12 +3175,12 @@ function App() {
         )}
         {modal?.type === "tutorial" && (
           <Tutorial
-            close={() =>
+            finish={(destination) =>
               run(async () => {
                 await save((s) => {
-                  s.settings.tutorial = 1;
+                  s.settings.tutorial = tutorialVersion;
                 });
-                close();
+                setModal(destination ? { type: destination } : undefined);
               })
             }
           />
