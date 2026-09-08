@@ -116,15 +116,31 @@ it("permanently deletes only trashed worlds and prunes only orphaned images", as
       { id: "unique-image", blob: unique, thumbnail: unique },
     ],
   );
-  await expect(
-    permanentlyDeleteWorld(saved.revision, kept.id),
-  ).rejects.toThrow("ごみ箱");
+  await expect(permanentlyDeleteWorld(saved.revision, kept.id)).rejects.toThrow(
+    "ごみ箱",
+  );
   const deleted = await permanentlyDeleteWorld(saved.revision, removed.id);
   expect(deleted.worlds.some((w) => w.content.world.id === removed.id)).toBe(
     false,
   );
   expect(await asset("shared-image")).toBeTruthy();
   expect(await asset("unique-image")).toBeUndefined();
+});
+it("backs up and restores custom Entity templates", async () => {
+  const now = new Date().toISOString();
+  const template = {
+    id: "template-backup",
+    name: "人物詳細",
+    kind: "character" as const,
+    fields: [{ id: "field-backup", label: "価値観" }],
+    createdAt: now,
+    updatedAt: now,
+  };
+  const out = await backup([], [], [template]);
+  const parsed = await parseBackup(
+    new File([JSON.stringify(out)], "backup.json"),
+  );
+  expect(parsed.entityTemplates).toEqual([template]);
 });
 it("transaction failure does not alter current state", async () => {
   const before = await readState();

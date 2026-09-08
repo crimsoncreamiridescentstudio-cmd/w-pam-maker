@@ -74,6 +74,7 @@ import {
   type Content,
   type Settings,
   type ImagePosition,
+  type EntityTemplate,
 } from "./model";
 import {
   readState,
@@ -87,12 +88,36 @@ import {
   download,
   type ImageAsset,
 } from "./db";
-import { orderEntities, renderPages, savePNG, savePDF, type ExportOptions } from "./export";
+import {
+  orderEntities,
+  renderPages,
+  savePNG,
+  savePDF,
+  type ExportOptions,
+} from "./export";
 import { WorkspaceTools } from "./workspace";
 import { TipsContent } from "./tips";
-import { FolderManager, FolderMembership, DimensionPanel, ItemDimensionPanel, OverrideEditor, confirmDimensionLeave } from "./dimension-ui";
-import { resolveContent, resolveRecord, validSelection, mergeFolderImports, dimensionLabel } from "./dimensions";
+import {
+  FolderManager,
+  FolderMembership,
+  DimensionPanel,
+  ItemDimensionPanel,
+  OverrideEditor,
+  confirmDimensionLeave,
+} from "./dimension-ui";
+import {
+  resolveContent,
+  resolveRecord,
+  validSelection,
+  mergeFolderImports,
+  dimensionLabel,
+} from "./dimensions";
 import { type DimensionSelection, type WorldFolder } from "./model";
+import {
+  instantiateTemplateFields,
+  mergeEntityTemplateImports,
+  templatesForKind,
+} from "./entity-templates";
 
 const icons = {
   character: Users,
@@ -223,7 +248,9 @@ function CharacterRelationsEditor({
 }) {
   const [query, setQuery] = useState("");
   const [addOther, setAddOther] = useState("");
-  const [addOrientation, setAddOrientation] = useState<"outgoing" | "incoming" | "mutual">("outgoing");
+  const [addOrientation, setAddOrientation] = useState<
+    "outgoing" | "incoming" | "mutual"
+  >("outgoing");
   const [addType, setAddType] = useState("");
   const [addNote, setAddNote] = useState("");
   const [editing, setEditing] = useState<{
@@ -233,9 +260,15 @@ function CharacterRelationsEditor({
     type: string;
     note: string;
   }>();
-  const candidateMap = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-  const availableCandidates = candidates.filter((candidate) => candidate.id !== recordId);
-  const related = relations.filter((relation) => relation.from === recordId || relation.to === recordId);
+  const candidateMap = new Map(
+    candidates.map((candidate) => [candidate.id, candidate]),
+  );
+  const availableCandidates = candidates.filter(
+    (candidate) => candidate.id !== recordId,
+  );
+  const related = relations.filter(
+    (relation) => relation.from === recordId || relation.to === recordId,
+  );
   const q = query.trim().toLocaleLowerCase();
   const matches = (relation: Relation) => {
     if (!q) return true;
@@ -245,45 +278,72 @@ function CharacterRelationsEditor({
       .filter(Boolean)
       .some((value) => String(value).toLocaleLowerCase().includes(q));
   };
-  const outgoing = related.filter((relation) => (relation.direction === "mutual" || relation.from === recordId) && matches(relation));
-  const incoming = related.filter((relation) => (relation.direction === "mutual" || relation.to === recordId) && matches(relation));
-  const orientationOf = (relation: Relation): "outgoing" | "incoming" | "mutual" =>
-    relation.direction === "mutual" ? "mutual" : relation.from === recordId ? "outgoing" : "incoming";
-  const otherIdOf = (relation: Relation) => relation.from === recordId ? relation.to : relation.from;
-  const beginEdit = (relation: Relation) => setEditing({
-    id: relation.id,
-    other: otherIdOf(relation),
-    orientation: orientationOf(relation),
-    type: relation.type,
-    note: relation.note,
-  });
+  const outgoing = related.filter(
+    (relation) =>
+      (relation.direction === "mutual" || relation.from === recordId) &&
+      matches(relation),
+  );
+  const incoming = related.filter(
+    (relation) =>
+      (relation.direction === "mutual" || relation.to === recordId) &&
+      matches(relation),
+  );
+  const orientationOf = (
+    relation: Relation,
+  ): "outgoing" | "incoming" | "mutual" =>
+    relation.direction === "mutual"
+      ? "mutual"
+      : relation.from === recordId
+        ? "outgoing"
+        : "incoming";
+  const otherIdOf = (relation: Relation) =>
+    relation.from === recordId ? relation.to : relation.from;
+  const beginEdit = (relation: Relation) =>
+    setEditing({
+      id: relation.id,
+      other: otherIdOf(relation),
+      orientation: orientationOf(relation),
+      type: relation.type,
+      note: relation.note,
+    });
   const saveEdit = () => {
     if (!editing?.other || !editing.type.trim()) return;
     const now = new Date().toISOString();
-    onChange(relations.map((relation) => relation.id !== editing.id ? relation : {
-      ...relation,
-      from: editing.orientation === "incoming" ? editing.other : recordId,
-      to: editing.orientation === "incoming" ? recordId : editing.other,
-      direction: editing.orientation === "mutual" ? "mutual" : "directed",
-      type: editing.type,
-      note: editing.note,
-      updatedAt: now,
-    }));
+    onChange(
+      relations.map((relation) =>
+        relation.id !== editing.id
+          ? relation
+          : {
+              ...relation,
+              from:
+                editing.orientation === "incoming" ? editing.other : recordId,
+              to: editing.orientation === "incoming" ? recordId : editing.other,
+              direction:
+                editing.orientation === "mutual" ? "mutual" : "directed",
+              type: editing.type,
+              note: editing.note,
+              updatedAt: now,
+            },
+      ),
+    );
     setEditing(undefined);
   };
   const addRelation = () => {
     if (!addOther || !addType.trim()) return;
     const now = new Date().toISOString();
-    onChange([...relations, {
-      id: uuid(),
-      from: addOrientation === "incoming" ? addOther : recordId,
-      to: addOrientation === "incoming" ? recordId : addOther,
-      direction: addOrientation === "mutual" ? "mutual" : "directed",
-      type: addType,
-      note: addNote,
-      createdAt: now,
-      updatedAt: now,
-    }]);
+    onChange([
+      ...relations,
+      {
+        id: uuid(),
+        from: addOrientation === "incoming" ? addOther : recordId,
+        to: addOrientation === "incoming" ? recordId : addOther,
+        direction: addOrientation === "mutual" ? "mutual" : "directed",
+        type: addType,
+        note: addNote,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
     setAddOther("");
     setAddOrientation("outgoing");
     setAddType("");
@@ -293,44 +353,227 @@ function CharacterRelationsEditor({
     const other = candidateMap.get(otherIdOf(relation));
     if (!other) return null;
     if (editing?.id === relation.id) {
-      return <div key={`${perspective}-${relation.id}`} className="character-relation-edit">
-        <label>相手<select value={editing.other} onChange={(event) => setEditing({ ...editing, other: event.target.value })}>{availableCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{shownName(candidate)}（{labels[candidate.kind]}）</option>)}</select></label>
-        <label>関係の向き<select value={editing.orientation} onChange={(event) => setEditing({ ...editing, orientation: event.target.value as "outgoing" | "incoming" | "mutual" })}><option value="outgoing">このキャラ → 相手</option><option value="incoming">相手 → このキャラ</option><option value="mutual">このキャラ ↔ 相手</option></select></label>
-        <label>関係名<input required maxLength={80} value={editing.type} onChange={(event) => setEditing({ ...editing, type: event.target.value })} /><small>表示時は先頭20文字を10文字×2行に整えます。</small></label>
-        <label className="full">補足メモ<textarea rows={2} maxLength={50000} value={editing.note} onChange={(event) => setEditing({ ...editing, note: event.target.value })} /></label>
-        <div className="actions full"><B onClick={() => setEditing(undefined)}>キャンセル</B><B primary disabled={!editing.other || !editing.type.trim()} onClick={saveEdit}>変更を反映</B></div>
-      </div>;
+      return (
+        <div
+          key={`${perspective}-${relation.id}`}
+          className="character-relation-edit"
+        >
+          <label>
+            相手
+            <select
+              value={editing.other}
+              onChange={(event) =>
+                setEditing({ ...editing, other: event.target.value })
+              }
+            >
+              {availableCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {shownName(candidate)}（{labels[candidate.kind]}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            関係の向き
+            <select
+              value={editing.orientation}
+              onChange={(event) =>
+                setEditing({
+                  ...editing,
+                  orientation: event.target.value as
+                    "outgoing" | "incoming" | "mutual",
+                })
+              }
+            >
+              <option value="outgoing">このキャラ → 相手</option>
+              <option value="incoming">相手 → このキャラ</option>
+              <option value="mutual">このキャラ ↔ 相手</option>
+            </select>
+          </label>
+          <label>
+            関係名
+            <input
+              required
+              maxLength={80}
+              value={editing.type}
+              onChange={(event) =>
+                setEditing({ ...editing, type: event.target.value })
+              }
+            />
+            <small>表示時は先頭20文字を10文字×2行に整えます。</small>
+          </label>
+          <label className="full">
+            補足メモ
+            <textarea
+              rows={2}
+              maxLength={50000}
+              value={editing.note}
+              onChange={(event) =>
+                setEditing({ ...editing, note: event.target.value })
+              }
+            />
+          </label>
+          <div className="actions full">
+            <B onClick={() => setEditing(undefined)}>キャンセル</B>
+            <B
+              primary
+              disabled={!editing.other || !editing.type.trim()}
+              onClick={saveEdit}
+            >
+              変更を反映
+            </B>
+          </div>
+        </div>
+      );
     }
-    const arrow = relation.direction === "mutual" ? "↔" : perspective === "outgoing" ? "→" : "←";
-    return <div className="character-relation-row" key={`${perspective}-${relation.id}`}>
-      <div><strong title={relation.type}>{relationDisplayLabel(relation.type)}</strong><span>{arrow} {shownName(other)}</span>{relation.note && <small>{relation.note}</small>}</div>
-      <div className="relation-actions"><button type="button" className="icon-button" aria-label="関係を編集" onClick={() => beginEdit(relation)}><PencilLine /></button><button type="button" className="icon-button" aria-label="関係を削除" onClick={() => onChange(relations.filter((item) => item.id !== relation.id))}><Trash2 /></button></div>
-    </div>;
+    const arrow =
+      relation.direction === "mutual"
+        ? "↔"
+        : perspective === "outgoing"
+          ? "→"
+          : "←";
+    return (
+      <div
+        className="character-relation-row"
+        key={`${perspective}-${relation.id}`}
+      >
+        <div>
+          <strong title={relation.type}>
+            {relationDisplayLabel(relation.type)}
+          </strong>
+          <span>
+            {arrow} {shownName(other)}
+          </span>
+          {relation.note && <small>{relation.note}</small>}
+        </div>
+        <div className="relation-actions">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="関係を編集"
+            onClick={() => beginEdit(relation)}
+          >
+            <PencilLine />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="関係を削除"
+            onClick={() =>
+              onChange(relations.filter((item) => item.id !== relation.id))
+            }
+          >
+            <Trash2 />
+          </button>
+        </div>
+      </div>
+    );
   };
 
-  return <fieldset className="character-relations-editor">
-    <legend><Network /> 関係</legend>
-    <p className="muted">このキャラクターを起点・相手にした関係をここでまとめて編集できます。相関図と同じ関係データへ保存されます。</p>
-    <div className="compact-form character-relation-add">
-      <label>相手<select required value={addOther} onChange={(event) => setAddOther(event.target.value)}><option value="" disabled>選択</option>{availableCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{shownName(candidate)}（{labels[candidate.kind]}）</option>)}</select></label>
-      <label>関係の向き<select value={addOrientation} onChange={(event) => setAddOrientation(event.target.value as "outgoing" | "incoming" | "mutual")}><option value="outgoing">このキャラ → 相手</option><option value="incoming">相手 → このキャラ</option><option value="mutual">このキャラ ↔ 相手</option></select></label>
-      <label>関係名<input required maxLength={80} value={addType} onChange={(event) => setAddType(event.target.value)} placeholder="親友／ライバル／片思い…" /><small>表示時は先頭20文字を10文字×2行に整えます。</small></label>
-      <label className="full">補足メモ<textarea rows={2} maxLength={50000} value={addNote} onChange={(event) => setAddNote(event.target.value)} /></label>
-      <B primary disabled={!addOther || !addType.trim()} onClick={addRelation}><Plus />関係を追加</B>
-    </div>
-    <label className="relation-search">関係を検索<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="キャラ名・関係名・メモ" /></label>
-    <p className="muted">このキャラクターに関係する登録：{related.length}件。50件以上でも検索・折りたたみで扱えます。</p>
-    <div className="character-relation-columns">
-      <details open>
-        <summary>向けている関係（{outgoing.length}）</summary>
-        <div className="character-relation-list">{outgoing.map((relation) => row(relation, "outgoing"))}{!outgoing.length && <p className="empty">該当する関係はありません。</p>}</div>
-      </details>
-      <details open>
-        <summary>向けられている関係（{incoming.length}）</summary>
-        <div className="character-relation-list">{incoming.map((relation) => row(relation, "incoming"))}{!incoming.length && <p className="empty">該当する関係はありません。</p>}</div>
-      </details>
-    </div>
-  </fieldset>;
+  return (
+    <fieldset className="character-relations-editor">
+      <legend>
+        <Network /> 関係
+      </legend>
+      <p className="muted">
+        このキャラクターを起点・相手にした関係をここでまとめて編集できます。相関図と同じ関係データへ保存されます。
+      </p>
+      <div className="compact-form character-relation-add">
+        <label>
+          相手
+          <select
+            required
+            value={addOther}
+            onChange={(event) => setAddOther(event.target.value)}
+          >
+            <option value="" disabled>
+              選択
+            </option>
+            {availableCandidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {shownName(candidate)}（{labels[candidate.kind]}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          関係の向き
+          <select
+            value={addOrientation}
+            onChange={(event) =>
+              setAddOrientation(
+                event.target.value as "outgoing" | "incoming" | "mutual",
+              )
+            }
+          >
+            <option value="outgoing">このキャラ → 相手</option>
+            <option value="incoming">相手 → このキャラ</option>
+            <option value="mutual">このキャラ ↔ 相手</option>
+          </select>
+        </label>
+        <label>
+          関係名
+          <input
+            required
+            maxLength={80}
+            value={addType}
+            onChange={(event) => setAddType(event.target.value)}
+            placeholder="親友／ライバル／片思い…"
+          />
+          <small>表示時は先頭20文字を10文字×2行に整えます。</small>
+        </label>
+        <label className="full">
+          補足メモ
+          <textarea
+            rows={2}
+            maxLength={50000}
+            value={addNote}
+            onChange={(event) => setAddNote(event.target.value)}
+          />
+        </label>
+        <B
+          primary
+          disabled={!addOther || !addType.trim()}
+          onClick={addRelation}
+        >
+          <Plus />
+          関係を追加
+        </B>
+      </div>
+      <label className="relation-search">
+        関係を検索
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="キャラ名・関係名・メモ"
+        />
+      </label>
+      <p className="muted">
+        このキャラクターに関係する登録：{related.length}
+        件。50件以上でも検索・折りたたみで扱えます。
+      </p>
+      <div className="character-relation-columns">
+        <details open>
+          <summary>向けている関係（{outgoing.length}）</summary>
+          <div className="character-relation-list">
+            {outgoing.map((relation) => row(relation, "outgoing"))}
+            {!outgoing.length && (
+              <p className="empty">該当する関係はありません。</p>
+            )}
+          </div>
+        </details>
+        <details open>
+          <summary>向けられている関係（{incoming.length}）</summary>
+          <div className="character-relation-list">
+            {incoming.map((relation) => row(relation, "incoming"))}
+            {!incoming.length && (
+              <p className="empty">該当する関係はありません。</p>
+            )}
+          </div>
+        </details>
+      </div>
+    </fieldset>
+  );
 }
 
 function EntryEditor({
@@ -342,22 +585,34 @@ function EntryEditor({
   relatedCandidates,
   relations,
   dimensionNotice,
+  customTemplates,
 }: {
   dimensionNotice?: string;
   record: RecordData;
   kind?: Kind;
-  onSave: (r: RecordData, assets: ImageAsset[], relations: Relation[]) => Promise<void>;
+  onSave: (
+    r: RecordData,
+    assets: ImageAsset[],
+    relations: Relation[],
+  ) => Promise<void>;
   close: () => void;
   busy: boolean;
   relatedCandidates: Entity[];
   relations: Relation[];
+  customTemplates: EntityTemplate[];
 }) {
   const [draft, setDraft] = useState({ ...record });
-  const [relationDrafts, setRelationDrafts] = useState<Relation[]>(() => structuredClone(relations));
+  const [relationDrafts, setRelationDrafts] = useState<Relation[]>(() =>
+    structuredClone(relations),
+  );
   const [assets, setAssets] = useState<ImageAsset[]>([]);
   const [error, setError] = useState("");
   const [converting, setConverting] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [templateChoice, setTemplateChoice] = useState("");
+  const [templateMode, setTemplateMode] = useState<"append" | "replace">(
+    "append",
+  );
   useEffect(() => {
     const f = (e: BeforeUnloadEvent) => {
       if (dirty) {
@@ -415,45 +670,99 @@ function EntryEditor({
           名前だけでも始められます。入力は「保存する」で端末に保存されます。
         </p>
         <fieldset disabled={busy || converting}>
-          {kind === "character" && (
-            <label>
-              入力テンプレート
-              <select
-                defaultValue=""
-                onChange={(event) => {
-                  const templates: Record<string, { label: string; value: string }[]> = {
-                    story: [
-                      { label: "役割", value: "" },
-                      { label: "目的", value: "" },
-                      { label: "葛藤", value: "" },
-                      { label: "秘密", value: "" },
-                    ],
-                    game: [
-                      { label: "クラス・役職", value: "" },
-                      { label: "能力", value: "" },
-                      { label: "装備", value: "" },
-                      { label: "戦い方", value: "" },
-                    ],
-                    profile: [
-                      { label: "好きなもの", value: "" },
-                      { label: "苦手なもの", value: "" },
-                      { label: "得意なこと", value: "" },
-                      { label: "大切なもの", value: "" },
-                    ],
-                  };
-                  if (!event.target.value) return;
-                  setDraft({ ...draft, customFields: [...draft.customFields, ...templates[event.target.value].map((field) => ({ ...field, id: crypto.randomUUID() }))].slice(0, 30) });
-                  setDirty(true);
-                  event.target.value = "";
-                }}
-              >
-                <option value="">選ぶとカスタム項目へ追加</option>
-                <option value="story">物語キャラクター</option>
-                <option value="game">ゲーム・戦闘</option>
-                <option value="profile">日常プロフィール</option>
-              </select>
-            </label>
-          )}
+          {kind &&
+            (() => {
+              const available = templatesForKind(kind, customTemplates);
+              return (
+                <fieldset className="template-picker">
+                  <legend>Entity項目テンプレート</legend>
+                  <div className="compact-form">
+                    <label>
+                      テンプレート
+                      <select
+                        value={templateChoice}
+                        onChange={(event) =>
+                          setTemplateChoice(event.target.value)
+                        }
+                      >
+                        <option value="">選択してください</option>
+                        <optgroup label="内蔵テンプレート">
+                          {available
+                            .filter((item) => item.builtin)
+                            .map((item) => (
+                              <option value={item.id} key={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        {!!available.some((item) => !item.builtin) && (
+                          <optgroup label="自作テンプレート">
+                            {available
+                              .filter((item) => !item.builtin)
+                              .map((item) => (
+                                <option value={item.id} key={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </label>
+                    <label>
+                      反映方法
+                      <select
+                        value={templateMode}
+                        onChange={(event) =>
+                          setTemplateMode(
+                            event.target.value as "append" | "replace",
+                          )
+                        }
+                      >
+                        <option value="append">現在の項目へ追加</option>
+                        <option value="replace">カスタム項目を置き換え</option>
+                      </select>
+                    </label>
+                    <B
+                      disabled={!templateChoice}
+                      onClick={() => {
+                        const selectedTemplate = available.find(
+                          (item) => item.id === templateChoice,
+                        );
+                        if (!selectedTemplate) return;
+                        if (
+                          templateMode === "replace" &&
+                          draft.customFields.length &&
+                          !confirm(
+                            "現在のカスタム項目と入力内容をテンプレートで置き換えますか？",
+                          )
+                        )
+                          return;
+                        const nextFields = instantiateTemplateFields(
+                          selectedTemplate.fields,
+                        );
+                        setDraft({
+                          ...draft,
+                          customFields:
+                            templateMode === "replace"
+                              ? nextFields
+                              : [...draft.customFields, ...nextFields].slice(
+                                  0,
+                                  30,
+                                ),
+                        });
+                        setDirty(true);
+                        setTemplateChoice("");
+                      }}
+                    >
+                      テンプレートを反映
+                    </B>
+                  </div>
+                  <p className="muted">
+                    テンプレートはカスタム項目名だけを反映します。入力済みの内容は「追加」なら保持されます。
+                  </p>
+                </fieldset>
+              );
+            })()}
           <div className="form-grid">
             {keys.map((key) => (
               <label
@@ -497,25 +806,105 @@ function EntryEditor({
               </label>
             ))}
           </div>
-          {!!kind && relatedCandidates.some((candidate) => candidate.id !== draft.id && (kind === "location" || kind === "organization" ? candidate.kind === kind : true)) && (
-            <label>
-              親項目・上位階層
-              <select value={draft.parentId} onChange={(event) => { setDraft({ ...draft, parentId: event.target.value }); setDirty(true); }}>
-                <option value="">指定なし</option>
-                {relatedCandidates.filter((candidate) => candidate.id !== draft.id && candidate.kind === kind).map((candidate) => <option key={candidate.id} value={candidate.id}>{shownName(candidate)}</option>)}
-              </select>
-            </label>
-          )}
+          {!!kind &&
+            relatedCandidates.some(
+              (candidate) =>
+                candidate.id !== draft.id &&
+                (kind === "location" || kind === "organization"
+                  ? candidate.kind === kind
+                  : true),
+            ) && (
+              <label>
+                親項目・上位階層
+                <select
+                  value={draft.parentId}
+                  onChange={(event) => {
+                    setDraft({ ...draft, parentId: event.target.value });
+                    setDirty(true);
+                  }}
+                >
+                  <option value="">指定なし</option>
+                  {relatedCandidates
+                    .filter(
+                      (candidate) =>
+                        candidate.id !== draft.id && candidate.kind === kind,
+                    )
+                    .map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {shownName(candidate)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
           <fieldset className="custom-fields">
             <legend>カスタム項目</legend>
             {draft.customFields.map((field, index) => (
               <div className="custom-field-row" key={field.id}>
-                <input aria-label="項目名" value={field.label} maxLength={80} onChange={(event) => { const customFields = [...draft.customFields]; customFields[index] = { ...field, label: event.target.value }; setDraft({ ...draft, customFields }); setDirty(true); }} />
-                <textarea aria-label="内容" rows={2} value={field.value} onChange={(event) => { const customFields = [...draft.customFields]; customFields[index] = { ...field, value: event.target.value }; setDraft({ ...draft, customFields }); setDirty(true); }} />
-                <B onClick={() => { setDraft({ ...draft, customFields: draft.customFields.filter((item) => item.id !== field.id) }); setDirty(true); }}>削除</B>
+                <input
+                  aria-label="項目名"
+                  value={field.label}
+                  maxLength={80}
+                  onChange={(event) => {
+                    const customFields = [...draft.customFields];
+                    customFields[index] = {
+                      ...field,
+                      label: event.target.value,
+                    };
+                    setDraft({ ...draft, customFields });
+                    setDirty(true);
+                  }}
+                />
+                <textarea
+                  aria-label="内容"
+                  rows={2}
+                  value={field.value}
+                  onChange={(event) => {
+                    const customFields = [...draft.customFields];
+                    customFields[index] = {
+                      ...field,
+                      value: event.target.value,
+                    };
+                    setDraft({ ...draft, customFields });
+                    setDirty(true);
+                  }}
+                />
+                <B
+                  onClick={() => {
+                    setDraft({
+                      ...draft,
+                      customFields: draft.customFields.filter(
+                        (item) => item.id !== field.id,
+                      ),
+                    });
+                    setDirty(true);
+                  }}
+                >
+                  削除
+                </B>
               </div>
             ))}
-            {draft.customFields.length < 30 && <B onClick={() => { setDraft({ ...draft, customFields: [...draft.customFields, { id: crypto.randomUUID(), label: "新しい項目", value: "" }] }); setDirty(true); }}><Plus />項目を追加</B>}
+            {draft.customFields.length < 30 && (
+              <B
+                onClick={() => {
+                  setDraft({
+                    ...draft,
+                    customFields: [
+                      ...draft.customFields,
+                      {
+                        id: crypto.randomUUID(),
+                        label: "新しい項目",
+                        value: "",
+                      },
+                    ],
+                  });
+                  setDirty(true);
+                }}
+              >
+                <Plus />
+                項目を追加
+              </B>
+            )}
           </fieldset>
           {relatedCandidates.some((candidate) => candidate.id !== draft.id) && (
             <fieldset className="related-picker">
@@ -554,14 +943,20 @@ function EntryEditor({
               </div>
             </fieldset>
           )}
-          {kind === "character" && relatedCandidates.some((candidate) => candidate.id !== draft.id) && (
-            <CharacterRelationsEditor
-              recordId={draft.id}
-              candidates={relatedCandidates}
-              relations={relationDrafts}
-              onChange={(next) => { setRelationDrafts(next); setDirty(true); }}
-            />
-          )}
+          {kind === "character" &&
+            relatedCandidates.some(
+              (candidate) => candidate.id !== draft.id,
+            ) && (
+              <CharacterRelationsEditor
+                recordId={draft.id}
+                candidates={relatedCandidates}
+                relations={relationDrafts}
+                onChange={(next) => {
+                  setRelationDrafts(next);
+                  setDirty(true);
+                }}
+              />
+            )}
           <label className="upload">
             <ImagePlus />
             画像を追加（最大4枚・1枚20MBまで）
@@ -767,7 +1162,9 @@ function Details({
     (relation) => relation.from === r.id || relation.to === r.id,
   );
   const parent = content?.entities.find((entity) => entity.id === r.parentId);
-  const children = content?.entities.filter((entity) => entity.parentId === r.id);
+  const children = content?.entities.filter(
+    (entity) => entity.parentId === r.id,
+  );
   return (
     <>
       <div className="gallery">
@@ -817,29 +1214,77 @@ function Details({
             ) : null,
           )}
       </dl>
-      {r.customFields.map((field) => field.value ? (
-        <dl key={field.id}>
-          <dt>{field.label}</dt>
-          <dd><RichText text={field.value} content={content} openReference={openReference} /></dd>
-        </dl>
-      ) : null)}
+      {r.customFields.map((field) =>
+        field.value ? (
+          <dl key={field.id}>
+            <dt>{field.label}</dt>
+            <dd>
+              <RichText
+                text={field.value}
+                content={content}
+                openReference={openReference}
+              />
+            </dd>
+          </dl>
+        ) : null,
+      )}
       {(parent || !!children?.length) && (
         <section className="related-section">
-          <h3><GitFork /> 階層</h3>
+          <h3>
+            <GitFork /> 階層
+          </h3>
           <div className="related-cards">
-            {parent && <button type="button" onClick={() => openReference?.(parent)}><span>親：{shownName(parent)}</span><small>{labels[parent.kind]}</small></button>}
-            {children?.map((entity) => <button type="button" key={entity.id} onClick={() => openReference?.(entity)}><span>子：{shownName(entity)}</span><small>{labels[entity.kind]}</small></button>)}
+            {parent && (
+              <button type="button" onClick={() => openReference?.(parent)}>
+                <span>親：{shownName(parent)}</span>
+                <small>{labels[parent.kind]}</small>
+              </button>
+            )}
+            {children?.map((entity) => (
+              <button
+                type="button"
+                key={entity.id}
+                onClick={() => openReference?.(entity)}
+              >
+                <span>子：{shownName(entity)}</span>
+                <small>{labels[entity.kind]}</small>
+              </button>
+            ))}
           </div>
         </section>
       )}
       {!!relations?.length && (
         <section className="related-section">
-          <h3><Network /> 登録した関係性</h3>
+          <h3>
+            <Network /> 登録した関係性
+          </h3>
           <div className="relation-nav">
             {relations.map((relation) => {
               const outgoing = relation.from === r.id;
-              const other = content?.entities.find((entity) => entity.id === (outgoing ? relation.to : relation.from));
-              return other ? <button type="button" key={relation.id} onClick={() => openReference?.(other)}><strong title={relation.type}>{relationDisplayLabel(relation.type)}</strong><span>{relation.direction === "mutual" ? "↔" : outgoing ? "→" : "←"}</span>{shownName(other)}{relation.note && <small>{relation.note}</small>}</button> : null;
+              const other = content?.entities.find(
+                (entity) =>
+                  entity.id === (outgoing ? relation.to : relation.from),
+              );
+              return other ? (
+                <button
+                  type="button"
+                  key={relation.id}
+                  onClick={() => openReference?.(other)}
+                >
+                  <strong title={relation.type}>
+                    {relationDisplayLabel(relation.type)}
+                  </strong>
+                  <span>
+                    {relation.direction === "mutual"
+                      ? "↔"
+                      : outgoing
+                        ? "→"
+                        : "←"}
+                  </span>
+                  {shownName(other)}
+                  {relation.note && <small>{relation.note}</small>}
+                </button>
+              ) : null;
             })}
           </div>
         </section>
@@ -875,26 +1320,69 @@ function Details({
 
 function RecordHistory({ world, record }: { world: World; record: Entity }) {
   const points = [
-    ...world.snapshots.map((item) => ({ label: item.version || item.number, date: item.createdAt, content: item.content })),
-    { label: "現在", date: world.content.world.updatedAt, content: world.content },
+    ...world.snapshots.map((item) => ({
+      label: item.version || item.number,
+      date: item.createdAt,
+      content: item.content,
+    })),
+    {
+      label: "現在",
+      date: world.content.world.updatedAt,
+      content: world.content,
+    },
   ];
-  const changes = points.flatMap((point, index) => {
-    const current = point.content.entities.find((entity) => entity.id === record.id);
-    const before = index ? points[index - 1].content.entities.find((entity) => entity.id === record.id) : undefined;
-    if (!current && !before) return [];
-    if (!before && current) return [{ ...point, summary: "項目を追加" }];
-    if (before && !current) return [{ ...point, summary: "項目を削除" }];
-    const changed = Object.entries(fields).filter(([key]) => JSON.stringify(before?.[key as keyof Entity]) !== JSON.stringify(current?.[key as keyof Entity])).map(([, label]) => label);
-    if (JSON.stringify(before?.overrides) !== JSON.stringify(current?.overrides)) changed.push("Dimension差分");
-    if (JSON.stringify(before?.customFields) !== JSON.stringify(current?.customFields)) changed.push("カスタム項目");
-    if (JSON.stringify(before?.relatedIds) !== JSON.stringify(current?.relatedIds)) changed.push("関連項目");
-    return changed.length ? [{ ...point, summary: changed.join("・") }] : [];
-  }).reverse();
+  const changes = points
+    .flatMap((point, index) => {
+      const current = point.content.entities.find(
+        (entity) => entity.id === record.id,
+      );
+      const before = index
+        ? points[index - 1].content.entities.find(
+            (entity) => entity.id === record.id,
+          )
+        : undefined;
+      if (!current && !before) return [];
+      if (!before && current) return [{ ...point, summary: "項目を追加" }];
+      if (before && !current) return [{ ...point, summary: "項目を削除" }];
+      const changed = Object.entries(fields)
+        .filter(
+          ([key]) =>
+            JSON.stringify(before?.[key as keyof Entity]) !==
+            JSON.stringify(current?.[key as keyof Entity]),
+        )
+        .map(([, label]) => label);
+      if (
+        JSON.stringify(before?.overrides) !== JSON.stringify(current?.overrides)
+      )
+        changed.push("Dimension差分");
+      if (
+        JSON.stringify(before?.customFields) !==
+        JSON.stringify(current?.customFields)
+      )
+        changed.push("カスタム項目");
+      if (
+        JSON.stringify(before?.relatedIds) !==
+        JSON.stringify(current?.relatedIds)
+      )
+        changed.push("関連項目");
+      return changed.length ? [{ ...point, summary: changed.join("・") }] : [];
+    })
+    .reverse();
   return (
     <details className="record-history">
-      <summary><History /> この項目の変更履歴（{changes.length}件）</summary>
-      {changes.map((item, index) => <div key={`${item.label}-${index}`}><strong>{item.label}</strong><span>{item.summary}</span><small>{new Date(item.date).toLocaleString()}</small></div>)}
-      {!changes.length && <p className="muted">節目を記録すると、この項目の変化を追えます。</p>}
+      <summary>
+        <History /> この項目の変更履歴（{changes.length}件）
+      </summary>
+      {changes.map((item, index) => (
+        <div key={`${item.label}-${index}`}>
+          <strong>{item.label}</strong>
+          <span>{item.summary}</span>
+          <small>{new Date(item.date).toLocaleString()}</small>
+        </div>
+      ))}
+      {!changes.length && (
+        <p className="muted">節目を記録すると、この項目の変化を追えます。</p>
+      )}
     </details>
   );
 }
@@ -959,6 +1447,236 @@ function Tutorial({ close }: { close: () => void }) {
     </Modal>
   );
 }
+function TemplateManager({
+  templates,
+  busy,
+  close,
+  onSave,
+  onDelete,
+}: {
+  templates: EntityTemplate[];
+  busy: boolean;
+  close: () => void;
+  onSave: (template: EntityTemplate) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<EntityTemplate>();
+  const beginNew = () => {
+    const now = new Date().toISOString();
+    setDraft({
+      id: uuid(),
+      name: "新しいテンプレート",
+      kind: "character",
+      fields: [{ id: uuid(), label: "新しい項目" }],
+      createdAt: now,
+      updatedAt: now,
+    });
+  };
+  const saveDraft = async () => {
+    if (!draft || !draft.name.trim()) return;
+    const fields = draft.fields
+      .map((field) => ({ ...field, label: field.label.trim() }))
+      .filter((field) => field.label);
+    if (!fields.length) return;
+    await onSave({
+      ...draft,
+      name: draft.name.trim(),
+      fields,
+      updatedAt: new Date().toISOString(),
+    });
+    setDraft(undefined);
+  };
+  return (
+    <Modal title="自作Entityテンプレート" close={() => !busy && close()} wide>
+      <p>
+        キャラ・場所・組織などのカスタム項目セットを、すべての世界で再利用できます。
+      </p>
+      {!draft ? (
+        <>
+          <div className="actions">
+            <B
+              primary
+              disabled={busy || templates.length >= 200}
+              onClick={beginNew}
+            >
+              <Plus />
+              新しいテンプレート
+            </B>
+          </div>
+          <div className="template-list">
+            {templates.map((item) => (
+              <div className="template-list-item" key={item.id}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <small>
+                    {labels[item.kind]}・{item.fields.length}項目
+                  </small>
+                </div>
+                <div className="actions">
+                  <B
+                    disabled={busy}
+                    onClick={() => setDraft(structuredClone(item))}
+                  >
+                    <PencilLine />
+                    編集
+                  </B>
+                  <B
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `「${item.name}」を削除しますか？登録済みEntityの内容は消えません。`,
+                        )
+                      )
+                        void onDelete(item.id);
+                    }}
+                  >
+                    <Trash2 />
+                    削除
+                  </B>
+                </div>
+              </div>
+            ))}
+          </div>
+          {!templates.length && (
+            <p className="empty">
+              自作テンプレートはまだありません。内蔵テンプレートはEntity編集画面からいつでも使えます。
+            </p>
+          )}
+        </>
+      ) : (
+        <fieldset disabled={busy}>
+          <div className="form-grid">
+            <label>
+              テンプレート名
+              <input
+                required
+                maxLength={100}
+                value={draft.name}
+                onChange={(event) =>
+                  setDraft({ ...draft, name: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              対象Entity
+              <select
+                value={draft.kind}
+                onChange={(event) =>
+                  setDraft({ ...draft, kind: event.target.value as Kind })
+                }
+              >
+                {kinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {labels[kind]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <fieldset className="custom-fields">
+            <legend>テンプレートの項目</legend>
+            {draft.fields.map((field, index) => (
+              <div className="template-field-row" key={field.id}>
+                <input
+                  aria-label={`テンプレート項目${index + 1}`}
+                  maxLength={80}
+                  value={field.label}
+                  onChange={(event) => {
+                    const next = [...draft.fields];
+                    next[index] = { ...field, label: event.target.value };
+                    setDraft({ ...draft, fields: next });
+                  }}
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="上へ"
+                  disabled={index === 0}
+                  onClick={() => {
+                    const next = [...draft.fields];
+                    [next[index - 1], next[index]] = [
+                      next[index],
+                      next[index - 1],
+                    ];
+                    setDraft({ ...draft, fields: next });
+                  }}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="下へ"
+                  disabled={index === draft.fields.length - 1}
+                  onClick={() => {
+                    const next = [...draft.fields];
+                    [next[index], next[index + 1]] = [
+                      next[index + 1],
+                      next[index],
+                    ];
+                    setDraft({ ...draft, fields: next });
+                  }}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="項目を削除"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      fields: draft.fields.filter(
+                        (item) => item.id !== field.id,
+                      ),
+                    })
+                  }
+                >
+                  <Trash2 />
+                </button>
+              </div>
+            ))}
+            {draft.fields.length < 30 && (
+              <B
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    fields: [
+                      ...draft.fields,
+                      { id: uuid(), label: "新しい項目" },
+                    ],
+                  })
+                }
+              >
+                <Plus />
+                項目を追加
+              </B>
+            )}
+          </fieldset>
+          <div className="actions">
+            <B disabled={busy} onClick={() => setDraft(undefined)}>
+              キャンセル
+            </B>
+            <B
+              primary
+              disabled={
+                busy ||
+                !draft.name.trim() ||
+                !draft.fields.some((field) => field.label.trim())
+              }
+              onClick={() => void saveDraft()}
+            >
+              <Check />
+              テンプレートを保存
+            </B>
+          </div>
+        </fieldset>
+      )}
+    </Modal>
+  );
+}
+
 function ExportDialog({
   content,
   close,
@@ -979,7 +1697,8 @@ function ExportDialog({
     order: "kind",
     template: "encyclopedia",
     logo: true,
-    separate: true,
+    paginationMode: "one-page",
+    breakThreshold: 50,
     width: 794,
   });
   const [pages, setPages] = useState<HTMLCanvasElement[]>([]);
@@ -997,7 +1716,11 @@ function ExportDialog({
     setPages([]);
     setIndex(0);
   };
-  const orderedChoices = orderEntities(content.entities, options.order, options.entityOrder);
+  const orderedChoices = orderEntities(
+    content.entities,
+    options.order,
+    options.entityOrder,
+  );
   const moveEntity = (id: string, offset: -1 | 1) => {
     const order = [...options.entityOrder];
     const index = order.indexOf(id);
@@ -1033,7 +1756,15 @@ function ExportDialog({
       <fieldset disabled={busy}>
         <label>
           出力テンプレート
-          <select value={options.template} onChange={(e) => change({ ...options, template: e.target.value as DialogOptions["template"] })}>
+          <select
+            value={options.template}
+            onChange={(e) =>
+              change({
+                ...options,
+                template: e.target.value as DialogOptions["template"],
+              })
+            }
+          >
             <option value="encyclopedia">図鑑</option>
             <option value="character">キャラシート</option>
             <option value="tourism">観光パンフ</option>
@@ -1061,34 +1792,104 @@ function ExportDialog({
         </div>
         <label>
           パンフレットの出力順
-          <select value={options.order} onChange={(e) => change({ ...options, order: e.target.value as DialogOptions["order"] })}>
-            <option value="kind">種類ごと（キャラ→場所→組織→設定・記事→作品→用語）</option>
+          <select
+            value={options.order}
+            onChange={(e) =>
+              change({
+                ...options,
+                order: e.target.value as DialogOptions["order"],
+              })
+            }
+          >
+            <option value="kind">
+              種類ごと（キャラ→場所→組織→設定・記事→作品→用語）
+            </option>
             <option value="registration">登録順</option>
             <option value="name">名前順</option>
             <option value="manual">手動で並べ替え</option>
           </select>
         </label>
-        {!!content.entities.length && <details className="export-selection">
-          <summary>出力する項目を個別に選ぶ（{options.entityIds.length}/{content.entities.length}）</summary>
-          <div className="checks export-select-all">
-            <label><input type="checkbox" checked={options.entityIds.length === content.entities.length} onChange={(e) => change({ ...options, entityIds: e.target.checked ? content.entities.map((entity) => entity.id) : [] })} />すべて</label>
-          </div>
-          <div className="export-order-list">
-            {orderedChoices.map((entity, index) => (
-              <div className="export-order-row" key={entity.id} draggable={options.order === "manual"} onDragStart={() => setDraggedId(entity.id)} onDragEnd={() => setDraggedId("")} onDragOver={(event) => event.preventDefault()} onDrop={() => dropEntity(entity.id)}>
-                {options.order === "manual" && <Move aria-hidden="true" />}
-                <label>
-                  <input type="checkbox" checked={options.entityIds.includes(entity.id)} onChange={(event) => change({ ...options, entityIds: event.target.checked ? [...options.entityIds, entity.id] : options.entityIds.filter((id) => id !== entity.id) })} />
-                  <span>{shownName(entity)} <small>· {labels[entity.kind]}</small></span>
-                </label>
-                {options.order === "manual" && <span className="export-order-actions">
-                  <button type="button" className="icon-button" aria-label={`${shownName(entity)}を上へ`} disabled={index === 0} onClick={() => moveEntity(entity.id, -1)}><ChevronUp /></button>
-                  <button type="button" className="icon-button" aria-label={`${shownName(entity)}を下へ`} disabled={index === orderedChoices.length - 1} onClick={() => moveEntity(entity.id, 1)}><ChevronDown /></button>
-                </span>}
-              </div>
-            ))}
-          </div>
-        </details>}
+        {!!content.entities.length && (
+          <details className="export-selection">
+            <summary>
+              出力する項目を個別に選ぶ（{options.entityIds.length}/
+              {content.entities.length}）
+            </summary>
+            <div className="checks export-select-all">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={options.entityIds.length === content.entities.length}
+                  onChange={(e) =>
+                    change({
+                      ...options,
+                      entityIds: e.target.checked
+                        ? content.entities.map((entity) => entity.id)
+                        : [],
+                    })
+                  }
+                />
+                すべて
+              </label>
+            </div>
+            <div className="export-order-list">
+              {orderedChoices.map((entity, index) => (
+                <div
+                  className="export-order-row"
+                  key={entity.id}
+                  draggable={options.order === "manual"}
+                  onDragStart={() => setDraggedId(entity.id)}
+                  onDragEnd={() => setDraggedId("")}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => dropEntity(entity.id)}
+                >
+                  {options.order === "manual" && <Move aria-hidden="true" />}
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={options.entityIds.includes(entity.id)}
+                      onChange={(event) =>
+                        change({
+                          ...options,
+                          entityIds: event.target.checked
+                            ? [...options.entityIds, entity.id]
+                            : options.entityIds.filter(
+                                (id) => id !== entity.id,
+                              ),
+                        })
+                      }
+                    />
+                    <span>
+                      {shownName(entity)} <small>· {labels[entity.kind]}</small>
+                    </span>
+                  </label>
+                  {options.order === "manual" && (
+                    <span className="export-order-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`${shownName(entity)}を上へ`}
+                        disabled={index === 0}
+                        onClick={() => moveEntity(entity.id, -1)}
+                      >
+                        <ChevronUp />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`${shownName(entity)}を下へ`}
+                        disabled={index === orderedChoices.length - 1}
+                        onClick={() => moveEntity(entity.id, 1)}
+                      >
+                        <ChevronDown />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
         <div className="checks">
           <label>
             <input
@@ -1098,17 +1899,49 @@ function ExportDialog({
             />
             W-Pamロゴ
           </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={options.separate}
-              onChange={(e) =>
-                change({ ...options, separate: e.target.checked })
-              }
-            />
-            項目ごとに改ページ
-          </label>
         </div>
+        <div className="form-grid">
+          <label>
+            項目分割
+            <select
+              value={options.paginationMode}
+              onChange={(e) =>
+                change({
+                  ...options,
+                  paginationMode: e.target.value as NonNullable<
+                    ExportOptions["paginationMode"]
+                  >,
+                })
+              }
+            >
+              <option value="auto">自動（従来の連続配置）</option>
+              <option value="one-page">1項目1ページ優先</option>
+              <option value="threshold">しきい値ベース改ページ</option>
+              <option value="always">常に1項目ごと改ページ</option>
+            </select>
+          </label>
+          {options.paginationMode === "threshold" && (
+            <label>
+              次ページ占有率
+              <select
+                value={options.breakThreshold}
+                onChange={(e) =>
+                  change({
+                    ...options,
+                    breakThreshold: Number(e.target.value) as 33 | 50 | 66,
+                  })
+                }
+              >
+                <option value={33}>33%以上なら次ページから</option>
+                <option value={50}>50%以上なら次ページから</option>
+                <option value={66}>66%以上なら次ページから</option>
+              </select>
+            </label>
+          )}
+        </div>
+        <p className="muted">
+          「1項目1ページ優先」は文字サイズを保ち、行間・余白・画像だけを軽く詰めます。長い項目は無理に縮小せず複数ページになります。
+        </p>
         <label>
           解像度
           <select
@@ -1185,7 +2018,10 @@ function ExportDialog({
   );
 }
 type ModalState =
-  | { type: "settings" | "tutorial" | "tips" | "history" | "snapshot" }
+  | {
+      type:
+        "settings" | "templates" | "tutorial" | "tips" | "history" | "snapshot";
+    }
   | { type: "export"; content?: Content }
   | {
       type: "editor";
@@ -1196,12 +2032,19 @@ type ModalState =
     }
   | { type: "detail" | "reference"; record: Entity }
   | { type: "relation-dimension"; id: string }
-  | { type: "import"; worlds: World[]; worldFolders: WorldFolder[]; assets: ImageAsset[] };
+  | {
+      type: "import";
+      worlds: World[];
+      worldFolders: WorldFolder[];
+      entityTemplates: EntityTemplate[];
+      assets: ImageAsset[];
+    };
 function App() {
   const [state, setState] = useState<State>();
   const [worldId, setWorldId] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
-  const [dimensionSelection, setDimensionSelection] = useState<DimensionSelection>({});
+  const [dimensionSelection, setDimensionSelection] =
+    useState<DimensionSelection>({});
   const [tab, setTab] = useState<Kind | "overview" | "tools">("overview");
   const [storedModal, setModal] = useState<ModalState>();
   const [showHidden, setShowHidden] = useState(false);
@@ -1262,19 +2105,36 @@ function App() {
     return () => clearTimeout(t);
   }, [notice]);
   const selected = state?.worlds.find((w) => w.content.world.id === worldId);
-  const folder = state?.worldFolders.find(f => f.id === selected?.folderId);
+  const folder = state?.worldFolders.find((f) => f.id === selected?.folderId);
   const activeSelection = validSelection(folder, dimensionSelection);
   const dimensionActive = Object.keys(activeSelection).length > 0;
   const baseContent = preview || selected?.content;
-  const content = baseContent ? resolveContent(baseContent, activeSelection) : undefined;
-  const modal = storedModal && (storedModal.type === "detail" || storedModal.type === "reference") ? {...storedModal, record: content?.entities.find(e => e.id === storedModal.record.id) || resolveRecord(baseContent?.entities.find(e => e.id === storedModal.record.id) || storedModal.record, activeSelection)} : storedModal;
-  const importCollisionCount = modal?.type === "import"
-    ? modal.worlds.filter((w) =>
-        state?.worlds.some(
-          (current) => current.content.world.id === w.content.world.id,
-        ),
-      ).length
-    : 0;
+  const content = baseContent
+    ? resolveContent(baseContent, activeSelection)
+    : undefined;
+  const modal =
+    storedModal &&
+    (storedModal.type === "detail" || storedModal.type === "reference")
+      ? {
+          ...storedModal,
+          record:
+            content?.entities.find((e) => e.id === storedModal.record.id) ||
+            resolveRecord(
+              baseContent?.entities.find(
+                (e) => e.id === storedModal.record.id,
+              ) || storedModal.record,
+              activeSelection,
+            ),
+        }
+      : storedModal;
+  const importCollisionCount =
+    modal?.type === "import"
+      ? modal.worlds.filter((w) =>
+          state?.worlds.some(
+            (current) => current.content.world.id === w.content.world.id,
+          ),
+        ).length
+      : 0;
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -1294,23 +2154,34 @@ function App() {
     const next = await mutate(revision, fn, assets);
     setState(next);
   };
-  const close = () => {if(confirmDimensionLeave()) setModal(undefined);};
+  const close = () => {
+    if (confirmDimensionLeave()) setModal(undefined);
+  };
   const openWorld = (id: string) => {
     setWorldId(id);
     setDimensionSelection({});
     setTab("overview");
     setPreview(undefined);
   };
-  const edit = (record: RecordData, kind?: Kind, isNew = false) =>
-    {if(!confirmDimensionLeave()) return; setModal({
+  const edit = (record: RecordData, kind?: Kind, isNew = false) => {
+    if (!confirmDimensionLeave()) return;
+    setModal({
       type: "editor",
-      record: isNew ? record : structuredClone([selected?.content.world, ...(selected?.content.entities || [])].find(r => r?.id === record.id) || record),
+      record: isNew
+        ? record
+        : structuredClone(
+            [
+              selected?.content.world,
+              ...(selected?.content.entities || []),
+            ].find((r) => r?.id === record.id) || record,
+          ),
       kind,
       isNew,
       revision: state!.revision,
-    });};
+    });
+  };
   const backupDownload = async (worlds = state!.worlds) => {
-    const b = await backup(worlds, state!.worldFolders);
+    const b = await backup(worlds, state!.worldFolders, state!.entityTemplates);
     const blob = new Blob([JSON.stringify(b)], { type: "application/json" });
     if (blob.size > 100 * 1024 * 1024)
       throw new Error("100MBを超えます。世界ごとに書き出してください。");
@@ -1343,7 +2214,7 @@ function App() {
             </span>
           </button>
           <div className="actions">
-            <span className="preview-tag">PREVIEW 0.3</span>
+            <span className="preview-tag">PREVIEW 0.7</span>
             <button
               className="button header-tips"
               aria-label="Tips・使い方を開く"
@@ -1415,10 +2286,22 @@ function App() {
                   </B>
                 </div>
               </div>
-              <FolderManager state={state} save={save} filter={folderFilter} setFilter={setFolderFilter} />
+              <FolderManager
+                state={state}
+                save={save}
+                filter={folderFilter}
+                setFilter={setFolderFilter}
+              />
               <div className="world-grid">
                 {state.worlds
-                  .filter((w) => !w.trashed && (!folderFilter || (folderFilter === "unfiled" ? !w.folderId : w.folderId === folderFilter)))
+                  .filter(
+                    (w) =>
+                      !w.trashed &&
+                      (!folderFilter ||
+                        (folderFilter === "unfiled"
+                          ? !w.folderId
+                          : w.folderId === folderFilter)),
+                  )
                   .map((w, i) => (
                     <article className="world-card" key={w.content.world.id}>
                       <button
@@ -1530,9 +2413,52 @@ function App() {
                 </B>
                 <span>{shownName(content.world)}</span>
               </nav>
-              {selected && !preview && <FolderMembership state={state} world={selected} save={save} />}
-              {selected && folder && <DimensionPanel key={worldId + ":" + folder.id} state={state} world={selected} folder={folder} selection={activeSelection} changeSelection={setDimensionSelection} save={save} readonly={!!preview} />}
-              {dimensionActive && !preview && <details className="dimension-box"><summary>非掲載の項目を探す（作者用）</summary><label><input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} />非掲載の項目を表示</label>{showHidden && <div className="actions">{baseContent?.entities.filter(e => !content.entities.some(v => v.id === e.id)).map(e => <B key={e.id} onClick={() => setModal({type:"detail", record:e})}>{shownName(e)} · 非掲載</B>)}</div>}</details>}
+              {selected && !preview && (
+                <FolderMembership state={state} world={selected} save={save} />
+              )}
+              {selected && folder && (
+                <DimensionPanel
+                  key={worldId + ":" + folder.id}
+                  state={state}
+                  world={selected}
+                  folder={folder}
+                  selection={activeSelection}
+                  changeSelection={setDimensionSelection}
+                  save={save}
+                  readonly={!!preview}
+                />
+              )}
+              {dimensionActive && !preview && (
+                <details className="dimension-box">
+                  <summary>非掲載の項目を探す（作者用）</summary>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={showHidden}
+                      onChange={(e) => setShowHidden(e.target.checked)}
+                    />
+                    非掲載の項目を表示
+                  </label>
+                  {showHidden && (
+                    <div className="actions">
+                      {baseContent?.entities
+                        .filter(
+                          (e) => !content.entities.some((v) => v.id === e.id),
+                        )
+                        .map((e) => (
+                          <B
+                            key={e.id}
+                            onClick={() =>
+                              setModal({ type: "detail", record: e })
+                            }
+                          >
+                            {shownName(e)} · 非掲載
+                          </B>
+                        ))}
+                    </div>
+                  )}
+                </details>
+              )}
               {preview && (
                 <div className="banner">
                   過去版の閲覧中です。編集はできません。
@@ -1596,7 +2522,12 @@ function App() {
               </section>
               <nav className="tabs" aria-label="世界の分類">
                 {(["overview", "tools", ...kinds] as const).map((k) => {
-                  const Icon = k === "overview" ? BookOpen : k === "tools" ? Wrench : icons[k];
+                  const Icon =
+                    k === "overview"
+                      ? BookOpen
+                      : k === "tools"
+                        ? Wrench
+                        : icons[k];
                   return (
                     <button
                       key={k}
@@ -1604,7 +2535,11 @@ function App() {
                       onClick={() => setTab(k)}
                     >
                       <Icon />
-                      {k === "overview" ? "世界について" : k === "tools" ? "整理・探索" : labels[k]}
+                      {k === "overview"
+                        ? "世界について"
+                        : k === "tools"
+                          ? "整理・探索"
+                          : labels[k]}
                       {k !== "overview" && k !== "tools" && (
                         <small>
                           {content.entities.filter((e) => e.kind === k).length}
@@ -1614,11 +2549,19 @@ function App() {
                   );
                 })}
               </nav>
-              <div className={tab === "tools" ? "content-grid tools-active" : "content-grid"}>
+              <div
+                className={
+                  tab === "tools" ? "content-grid tools-active" : "content-grid"
+                }
+              >
                 <section className="paper">
                   <div className="section-heading">
                     <h2>
-                      {tab === "overview" ? "この世界について" : tab === "tools" ? "世界を整理し、つなぎ、歩く" : labels[tab]}
+                      {tab === "overview"
+                        ? "この世界について"
+                        : tab === "tools"
+                          ? "世界を整理し、つなぎ、歩く"
+                          : labels[tab]}
                     </h2>
                     {tab !== "overview" && tab !== "tools" && !preview && (
                       <B primary onClick={() => edit(blank(), tab, true)}>
@@ -1642,13 +2585,20 @@ function App() {
                     <WorkspaceTools
                       content={content}
                       readonly={!!preview || dimensionActive}
-                      onDimensionRelation={!preview && folder ? id => setModal({type:"relation-dimension", id}) : undefined}
+                      onDimensionRelation={
+                        !preview && folder
+                          ? (id) => setModal({ type: "relation-dimension", id })
+                          : undefined
+                      }
                       onOpen={(record) => setModal({ type: "detail", record })}
                       onMutate={async (change) => {
                         await save((s) => {
-                          const world = s.worlds.find((item) => item.content.world.id === worldId)!;
+                          const world = s.worlds.find(
+                            (item) => item.content.world.id === worldId,
+                          )!;
                           change(world.content);
-                          world.content.world.updatedAt = new Date().toISOString();
+                          world.content.world.updatedAt =
+                            new Date().toISOString();
                         });
                         setNotice("端末に保存しました");
                       }}
@@ -1700,44 +2650,46 @@ function App() {
                     </div>
                   )}
                 </section>
-                {tab !== "tools" && <aside>
-                  <section className="paper">
-                    <h2>世界の記録</h2>
-                    <p className="muted">
-                      編集内容の保存と、節目の記録は別です。
-                    </p>
-                    <B onClick={() => setModal({ type: "history" })}>
-                      <History />
-                      履歴・差分を見る
-                    </B>
-                    {selected!.snapshots
-                      .slice(-3)
-                      .reverse()
-                      .map((s) => (
-                        <div className="timeline-item" key={s.id}>
-                          <strong>{s.version || s.number}</strong>
-                          <p>{s.title}</p>
-                          <small>{s.number}</small>
-                        </div>
-                      ))}
-                  </section>
-                  <section className="paper">
-                    <h2>持ち歩くために</h2>
-                    <p>JSONには画像・履歴・作者用メモも含まれます。</p>
-                    <B
-                      disabled={busy}
-                      onClick={() => run(() => backupDownload([selected!]))}
-                    >
-                      <Download />
-                      この世界のJSON
-                    </B>
-                  </section>
-                </aside>}
+                {tab !== "tools" && (
+                  <aside>
+                    <section className="paper">
+                      <h2>世界の記録</h2>
+                      <p className="muted">
+                        編集内容の保存と、節目の記録は別です。
+                      </p>
+                      <B onClick={() => setModal({ type: "history" })}>
+                        <History />
+                        履歴・差分を見る
+                      </B>
+                      {selected!.snapshots
+                        .slice(-3)
+                        .reverse()
+                        .map((s) => (
+                          <div className="timeline-item" key={s.id}>
+                            <strong>{s.version || s.number}</strong>
+                            <p>{s.title}</p>
+                            <small>{s.number}</small>
+                          </div>
+                        ))}
+                    </section>
+                    <section className="paper">
+                      <h2>持ち歩くために</h2>
+                      <p>JSONには画像・履歴・作者用メモも含まれます。</p>
+                      <B
+                        disabled={busy}
+                        onClick={() => run(() => backupDownload([selected!]))}
+                      >
+                        <Download />
+                        この世界のJSON
+                      </B>
+                    </section>
+                  </aside>
+                )}
               </div>
             </>
           )}
           <footer>
-            W-Pam Preview 0.5 ·
+            W-Pam Preview 0.7 ·
             データはこの端末内に保存されます。同期・オンライン公開は行いません。
           </footer>
         </main>
@@ -1760,11 +2712,20 @@ function App() {
           <EntryEditor
             key={modal.record.id}
             record={modal.record}
-            dimensionNotice={dimensionActive ? "基本データを編集中です。この条件だけの姿を変更したい場合は、閉じて項目詳細の「このDimensionで編集」、または上部の「項目・関係の別の姿を編集」を使ってください。" : undefined}
+            dimensionNotice={
+              dimensionActive
+                ? "基本データを編集中です。この条件だけの姿を変更したい場合は、閉じて項目詳細の「このDimensionで編集」、または上部の「項目・関係の別の姿を編集」を使ってください。"
+                : undefined
+            }
             kind={modal.kind}
             busy={busy}
             relatedCandidates={selected?.content.entities || []}
-            relations={modal.kind === "character" ? selected?.content.relations || [] : []}
+            relations={
+              modal.kind === "character"
+                ? selected?.content.relations || []
+                : []
+            }
+            customTemplates={state.entityTemplates}
             close={close}
             onSave={async (r, assets, relationDrafts) => {
               setBusy(true);
@@ -1776,7 +2737,13 @@ function App() {
                     if (!modal.kind) {
                       if (modal.isNew)
                         s.worlds.push({
-                          content: { world: r, entities: [], relations: [], collections: [], events: [] },
+                          content: {
+                            world: r,
+                            entities: [],
+                            relations: [],
+                            collections: [],
+                            events: [],
+                          },
                           snapshots: [],
                           trashed: false,
                         });
@@ -1798,7 +2765,8 @@ function App() {
                         w.content.entities = w.content.entities.map((x) =>
                           x.id === r.id ? e : x,
                         );
-                      if (modal.kind === "character") w.content.relations = relationDrafts;
+                      if (modal.kind === "character")
+                        w.content.relations = relationDrafts;
                       w.content.world.updatedAt = now;
                     }
                   },
@@ -1816,8 +2784,27 @@ function App() {
         )}
         {modal?.type === "detail" && (
           <Modal title={shownName(modal.record)} close={close} wide>
-            {selected && folder && !preview && <ItemDimensionPanel key={modal.record.id} state={state} world={selected} folder={folder} recordId={modal.record.id} selection={activeSelection} changeSelection={setDimensionSelection} save={save} />}
-            {preview && <p className="banner">過去の記録：{folder ? dimensionLabel(folder, activeSelection) : "基本データ"}（閲覧のみ）</p>}
+            {selected && folder && !preview && (
+              <ItemDimensionPanel
+                key={modal.record.id}
+                state={state}
+                world={selected}
+                folder={folder}
+                recordId={modal.record.id}
+                selection={activeSelection}
+                changeSelection={setDimensionSelection}
+                save={save}
+              />
+            )}
+            {preview && (
+              <p className="banner">
+                過去の記録：
+                {folder
+                  ? dimensionLabel(folder, activeSelection)
+                  : "基本データ"}
+                （閲覧のみ）
+              </p>
+            )}
             <Details
               r={modal.record}
               content={content}
@@ -1825,13 +2812,52 @@ function App() {
                 setModal({ type: "reference", record })
               }
             />
-            {selected && <RecordHistory world={selected} record={modal.record} />}
-            {selected && folder && !preview && <details className="dimension-box"><summary>この項目の関係を別の姿にする</summary><p>非掲載の関係も含みます。相手の項目が非掲載なら、関係を掲載にしても通常表示されません。</p><div className="actions">{selected.content.relations.filter(r => r.from === modal.record.id || r.to === modal.record.id).map(r => <B key={r.id} onClick={() => setModal({type:"relation-dimension", id:r.id})}>{r.type} · {shownName(selected.content.entities.find(e => e.id === (r.from === modal.record.id ? r.to : r.from))!)}</B>)}</div></details>}
+            {selected && (
+              <RecordHistory world={selected} record={modal.record} />
+            )}
+            {selected && folder && !preview && (
+              <details className="dimension-box">
+                <summary>この項目の関係を別の姿にする</summary>
+                <p>
+                  非掲載の関係も含みます。相手の項目が非掲載なら、関係を掲載にしても通常表示されません。
+                </p>
+                <div className="actions">
+                  {selected.content.relations
+                    .filter(
+                      (r) =>
+                        r.from === modal.record.id || r.to === modal.record.id,
+                    )
+                    .map((r) => (
+                      <B
+                        key={r.id}
+                        onClick={() =>
+                          setModal({ type: "relation-dimension", id: r.id })
+                        }
+                      >
+                        {r.type} ·{" "}
+                        {shownName(
+                          selected.content.entities.find(
+                            (e) =>
+                              e.id ===
+                              (r.from === modal.record.id ? r.to : r.from),
+                          )!,
+                        )}
+                      </B>
+                    ))}
+                </div>
+              </details>
+            )}
             <B
               onClick={() =>
                 setModal({
                   type: "export",
-                  content: { world: modal.record, entities: [], relations: [], collections: [], events: [] },
+                  content: {
+                    world: modal.record,
+                    entities: [],
+                    relations: [],
+                    collections: [],
+                    events: [],
+                  },
                 })
               }
             >
@@ -1840,24 +2866,60 @@ function App() {
             </B>
             {!preview && (
               <div className="actions">
-                <B onClick={() => run(async () => {
-                  const nextValue = !modal.record.favorite;
-                  await save((s) => {
-                    const entity = s.worlds.find((w) => w.content.world.id === worldId)!.content.entities.find((e) => e.id === modal.record.id)!;
-                    entity.favorite = nextValue;
-                    entity.updatedAt = new Date().toISOString();
-                  });
-                  setModal({ type: "detail", record: { ...modal.record, favorite: nextValue, updatedAt: new Date().toISOString() } });
-                })}><Star />{modal.record.favorite ? "お気に入り解除" : "お気に入り"}</B>
-                <B onClick={() => run(async () => {
-                  const nextValue = !modal.record.pinned;
-                  await save((s) => {
-                    const entity = s.worlds.find((w) => w.content.world.id === worldId)!.content.entities.find((e) => e.id === modal.record.id)!;
-                    entity.pinned = nextValue;
-                    entity.updatedAt = new Date().toISOString();
-                  });
-                  setModal({ type: "detail", record: { ...modal.record, pinned: nextValue, updatedAt: new Date().toISOString() } });
-                })}><Pin />{modal.record.pinned ? "ピンを外す" : "ピン留め"}</B>
+                <B
+                  onClick={() =>
+                    run(async () => {
+                      const nextValue = !modal.record.favorite;
+                      await save((s) => {
+                        const entity = s.worlds
+                          .find((w) => w.content.world.id === worldId)!
+                          .content.entities.find(
+                            (e) => e.id === modal.record.id,
+                          )!;
+                        entity.favorite = nextValue;
+                        entity.updatedAt = new Date().toISOString();
+                      });
+                      setModal({
+                        type: "detail",
+                        record: {
+                          ...modal.record,
+                          favorite: nextValue,
+                          updatedAt: new Date().toISOString(),
+                        },
+                      });
+                    })
+                  }
+                >
+                  <Star />
+                  {modal.record.favorite ? "お気に入り解除" : "お気に入り"}
+                </B>
+                <B
+                  onClick={() =>
+                    run(async () => {
+                      const nextValue = !modal.record.pinned;
+                      await save((s) => {
+                        const entity = s.worlds
+                          .find((w) => w.content.world.id === worldId)!
+                          .content.entities.find(
+                            (e) => e.id === modal.record.id,
+                          )!;
+                        entity.pinned = nextValue;
+                        entity.updatedAt = new Date().toISOString();
+                      });
+                      setModal({
+                        type: "detail",
+                        record: {
+                          ...modal.record,
+                          pinned: nextValue,
+                          updatedAt: new Date().toISOString(),
+                        },
+                      });
+                    })
+                  }
+                >
+                  <Pin />
+                  {modal.record.pinned ? "ピンを外す" : "ピン留め"}
+                </B>
                 <B
                   primary
                   onClick={() => edit(modal.record, modal.record.kind)}
@@ -1891,12 +2953,21 @@ function App() {
                               (id) => id !== modal.record.id,
                             );
                           for (const entity of w.content.entities)
-                            if (entity.parentId === modal.record.id) entity.parentId = "";
-                          w.content.relations = w.content.relations.filter((relation) => relation.from !== modal.record.id && relation.to !== modal.record.id);
+                            if (entity.parentId === modal.record.id)
+                              entity.parentId = "";
+                          w.content.relations = w.content.relations.filter(
+                            (relation) =>
+                              relation.from !== modal.record.id &&
+                              relation.to !== modal.record.id,
+                          );
                           for (const collection of w.content.collections)
-                            collection.entityIds = collection.entityIds.filter((id) => id !== modal.record.id);
+                            collection.entityIds = collection.entityIds.filter(
+                              (id) => id !== modal.record.id,
+                            );
                           for (const event of w.content.events)
-                            event.entityIds = event.entityIds.filter((id) => id !== modal.record.id);
+                            event.entityIds = event.entityIds.filter(
+                              (id) => id !== modal.record.id,
+                            );
                           w.content.world.updatedAt = new Date().toISOString();
                         });
                         close();
@@ -1911,7 +2982,24 @@ function App() {
             )}
           </Modal>
         )}
-        {modal?.type === "relation-dimension" && selected && folder && !preview && <Modal title="関係の別の姿" close={close} wide><OverrideEditor key={modal.id + ":" + state.revision} world={selected} folder={folder} selection={activeSelection} revision={state.revision} save={save} target={"relation:" + modal.id} changeTarget={() => {}} fixedTarget /></Modal>}
+        {modal?.type === "relation-dimension" &&
+          selected &&
+          folder &&
+          !preview && (
+            <Modal title="関係の別の姿" close={close} wide>
+              <OverrideEditor
+                key={modal.id + ":" + state.revision}
+                world={selected}
+                folder={folder}
+                selection={activeSelection}
+                revision={state.revision}
+                save={save}
+                target={"relation:" + modal.id}
+                changeTarget={() => {}}
+                fixedTarget
+              />
+            </Modal>
+          )}
         {modal?.type === "reference" && (
           <Modal title="関連項目の概要" close={close}>
             <div className="reference-preview">
@@ -2042,6 +3130,37 @@ function App() {
         {modal?.type === "export" && content && (
           <ExportDialog content={modal.content || content} close={close} />
         )}
+        {modal?.type === "templates" && (
+          <TemplateManager
+            templates={state.entityTemplates}
+            busy={busy}
+            close={close}
+            onSave={async (template) => {
+              await run(async () => {
+                await save((s) => {
+                  const index = s.entityTemplates.findIndex(
+                    (item) => item.id === template.id,
+                  );
+                  if (index >= 0) s.entityTemplates[index] = template;
+                  else s.entityTemplates.push(template);
+                });
+                setNotice("テンプレートを保存しました");
+              });
+            }}
+            onDelete={async (id) => {
+              await run(async () => {
+                await save((s) => {
+                  s.entityTemplates = s.entityTemplates.filter(
+                    (item) => item.id !== id,
+                  );
+                });
+                setNotice(
+                  "テンプレートを削除しました。登録済みEntityは変更していません。",
+                );
+              });
+            }}
+          />
+        )}
         {modal?.type === "tutorial" && (
           <Tutorial
             close={() =>
@@ -2062,8 +3181,8 @@ function App() {
         {modal?.type === "import" && (
           <Modal title="バックアップを読み込む" close={() => !busy && close()}>
             <p>
-              {modal.worlds.length}世界・{modal.assets.length}
-              画像を確認しました。
+              {modal.worlds.length}世界・{modal.assets.length}画像・
+              {modal.entityTemplates.length}自作テンプレートを確認しました。
             </p>
             <ul>
               {modal.worlds.map((w) => (
@@ -2076,7 +3195,8 @@ function App() {
               「別の世界として追加」が標準です。バックアップ時点でごみ箱にあった世界は、ごみ箱へ読み込みます。
             </p>
             <p>
-              同じ世界の重複：{importCollisionCount}件。「バックアップで上書き」では同じIDの現在データを置き換え、置換前の状態は安全コピーとしてごみ箱へ残します。
+              同じ世界の重複：{importCollisionCount}
+              件。「バックアップで上書き」では同じIDの現在データを置き換え、置換前の状態は安全コピーとしてごみ箱へ残します。
             </p>
             <div className="actions">
               {[false, true].map((replace) => (
@@ -2094,6 +3214,10 @@ function App() {
                       )
                         return;
                       await save((s) => {
+                        s.entityTemplates = mergeEntityTemplateImports(
+                          s.entityTemplates,
+                          modal.entityTemplates,
+                        );
                         const worlds = mergeFolderImports(
                           s,
                           modal.worldFolders,
@@ -2111,7 +3235,9 @@ function App() {
                     })
                   }
                 >
-                  {replace ? "バックアップで同じIDを上書き" : "別の世界として追加"}
+                  {replace
+                    ? "バックアップで同じIDを上書き"
+                    : "別の世界として追加"}
                 </B>
               ))}
             </div>
@@ -2226,6 +3352,14 @@ function App() {
             <p className="notice">
               ブラウザのデータ削除や端末故障で失われる可能性があります。画像・PDFは復元用ではありません。
             </p>
+            <h3>Entity項目テンプレート</h3>
+            <p>
+              キャラシートなど、自分用のカスタム項目セットを保存・編集できます。
+            </p>
+            <B onClick={() => setModal({ type: "templates" })}>
+              <Wrench />
+              自作テンプレートを管理
+            </B>
             <h3>PWAとして使う</h3>
             <p>
               初回はオンラインで開いてください。iPhone／iPadはSafariの共有メニューから「ホーム画面に追加」。オフライン準備の完了後に機内モードでも試してください。

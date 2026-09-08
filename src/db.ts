@@ -7,6 +7,8 @@ import {
   worldSchema,
   worldFolderSchema,
   type WorldFolder,
+  entityTemplateSchema,
+  type EntityTemplate,
   uuid,
 } from "./model";
 import { z } from "zod";
@@ -78,6 +80,14 @@ export async function mutate(
     fn(s);
     if (s.worlds.length > 100)
       throw new Error("世界は安全コピー・ごみ箱を含め100件までです。");
+    if (s.entityTemplates.length > 200)
+      throw new Error("自作テンプレートは200件までです。");
+    if (
+      new Set(s.entityTemplates.map((item) => item.id)).size !==
+      s.entityTemplates.length
+    )
+      throw new Error("自作テンプレートのIDが重複しています。");
+    for (const item of s.entityTemplates) entityTemplateSchema.parse(item);
     for (const w of s.worlds) worldSchema.parse(w);
     validateRelations(s.worlds);
     validateDimensions(s);
@@ -107,9 +117,7 @@ export function permanentlyDeleteWorld(revision: number, worldId: string) {
   return mutate(
     revision,
     (s) => {
-      const index = s.worlds.findIndex(
-        (w) => w.content.world.id === worldId,
-      );
+      const index = s.worlds.findIndex((w) => w.content.world.id === worldId);
       if (index < 0) throw new Error("削除する世界が見つかりません");
       if (!s.worlds[index].trashed)
         throw new Error("完全削除できるのはごみ箱の世界だけです");
@@ -228,13 +236,18 @@ const imageSchema = z.object({
 });
 export const backupSchema = z.object({
   format: z.literal("w-pam-backup"),
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   worldFolders: z.array(worldFolderSchema).max(100).default([]),
+  entityTemplates: z.array(entityTemplateSchema).max(200).default([]),
   exportedAt: z.string().datetime(),
   worlds: z.array(worldSchema).max(100),
   images: z.array(imageSchema).max(10000),
 });
-export async function backup(worlds: World[], worldFolders: WorldFolder[] = []) {
+export async function backup(
+  worlds: World[],
+  worldFolders: WorldFolder[] = [],
+  entityTemplates: EntityTemplate[] = [],
+) {
   validateDimensions({ worlds, worldFolders });
   const images = [];
   for (const id of imageRefs(worlds)) {
@@ -247,8 +260,9 @@ export async function backup(worlds: World[], worldFolders: WorldFolder[] = []) 
   }
   return {
     format: "w-pam-backup",
-    schemaVersion: 2,
+    schemaVersion: 3,
     worldFolders: structuredClone(worldFolders),
+    entityTemplates: structuredClone(entityTemplates),
     exportedAt: new Date().toISOString(),
     worlds: structuredClone(worlds),
     images,
@@ -267,11 +281,17 @@ export async function parseBackup(file: File) {
     const rawWorld = raw.worlds?.[worldIndex];
     for (const [content, rawContent] of [
       [world.content, rawWorld?.content],
-      ...world.snapshots.map((item, index) => [item.content, rawWorld?.snapshots?.[index]?.content]),
+      ...world.snapshots.map((item, index) => [
+        item.content,
+        rawWorld?.snapshots?.[index]?.content,
+      ]),
     ] as const) {
-      if (rawContent && !("relations" in rawContent)) delete (content as Partial<typeof content>).relations;
-      if (rawContent && !("collections" in rawContent)) delete (content as Partial<typeof content>).collections;
-      if (rawContent && !("events" in rawContent)) delete (content as Partial<typeof content>).events;
+      if (rawContent && !("relations" in rawContent))
+        delete (content as Partial<typeof content>).relations;
+      if (rawContent && !("collections" in rawContent))
+        delete (content as Partial<typeof content>).collections;
+      if (rawContent && !("events" in rawContent))
+        delete (content as Partial<typeof content>).events;
     }
   });
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
@@ -318,7 +338,12 @@ export async function parseBackup(file: File) {
           }),
         );
       }
-  return { worlds: b.worlds, worldFolders: b.worldFolders, assets };
+  return {
+    worlds: b.worlds,
+    worldFolders: b.worldFolders,
+    entityTemplates: b.entityTemplates,
+    assets,
+  };
 }
 export function importedCopy(
   w: World,

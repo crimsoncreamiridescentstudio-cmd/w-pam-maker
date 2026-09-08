@@ -63,7 +63,7 @@ describe("world history", () => {
     expect(
       backupSchema.safeParse({
         format: "w-pam-backup",
-        schemaVersion: 3,
+        schemaVersion: 4,
         worlds: [],
         images: [],
         exportedAt: new Date().toISOString(),
@@ -98,18 +98,17 @@ describe("world history", () => {
     state.worlds.push(current);
     applyWorldImports(state, [imported], "replace");
     expect(
-      state.worlds.find(
-        (w) => w.content.world.id === imported.content.world.id,
-      )?.content.world.name,
+      state.worlds.find((w) => w.content.world.id === imported.content.world.id)
+        ?.content.world.name,
     ).toBe("バックアップ版");
     expect(
       state.worlds.find(
         (w) => w.content.world.id !== imported.content.world.id,
       ),
     ).toMatchObject({
-        trashed: true,
-        content: { world: { name: "現在版（読み込み前の安全コピー）" } },
-      });
+      trashed: true,
+      content: { world: { name: "現在版（読み込み前の安全コピー）" } },
+    });
   });
   it("loads old records with safe defaults for new display features", () => {
     const old = blank("旧データ") as unknown as Record<string, unknown>;
@@ -129,7 +128,11 @@ describe("world history", () => {
       customFields: [],
       dialogueSamples: "",
     });
-    expect(parsed.content).toMatchObject({ relations: [], collections: [], events: [] });
+    expect(parsed.content).toMatchObject({
+      relations: [],
+      collections: [],
+      events: [],
+    });
   });
   it("formats relationship labels as at most two ten-character lines", () => {
     expect(relationDisplayLines("1234567890abcdefghijXYZ")).toEqual([
@@ -188,19 +191,66 @@ describe("world history", () => {
   });
   it("remaps independent relations, groups, events and hierarchy", () => {
     const w = world();
-    const a = entitySchema.parse({ ...blank("親"), kind: "organization", worldId: w.content.world.id });
-    const b = entitySchema.parse({ ...blank("子"), kind: "organization", worldId: w.content.world.id, parentId: a.id });
+    const a = entitySchema.parse({
+      ...blank("親"),
+      kind: "organization",
+      worldId: w.content.world.id,
+    });
+    const b = entitySchema.parse({
+      ...blank("子"),
+      kind: "organization",
+      worldId: w.content.world.id,
+      parentId: a.id,
+    });
     const now = new Date().toISOString();
     w.content.entities = [a, b];
     Object.assign(w.content, {
-      relations: [{ id: crypto.randomUUID(), from: a.id, to: b.id, type: "管轄", direction: "directed", note: "", createdAt: now, updatedAt: now }],
-      collections: [{ id: crypto.randomUUID(), name: "組織群", description: "", entityIds: [a.id, b.id], createdAt: now, updatedAt: now }],
-      events: [{ id: crypto.randomUUID(), title: "設立", date: "元年", sortKey: "0001", description: "", entityIds: [a.id], createdAt: now, updatedAt: now }],
+      relations: [
+        {
+          id: crypto.randomUUID(),
+          from: a.id,
+          to: b.id,
+          type: "管轄",
+          direction: "directed",
+          note: "",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      collections: [
+        {
+          id: crypto.randomUUID(),
+          name: "組織群",
+          description: "",
+          entityIds: [a.id, b.id],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      events: [
+        {
+          id: crypto.randomUUID(),
+          title: "設立",
+          date: "元年",
+          sortKey: "0001",
+          description: "",
+          entityIds: [a.id],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
     });
     const copy = duplicateWorld(w);
     expect(copy.content.entities[1].parentId).toBe(copy.content.entities[0].id);
-    expect(copy.content.relations[0]).toMatchObject({ from: copy.content.entities[0].id, to: copy.content.entities[1].id });
-    expect(copy.content.collections[0].entityIds).toEqual(copy.content.entities.map((entity) => entity.id));
-    expect(copy.content.events[0].entityIds).toEqual([copy.content.entities[0].id]);
+    expect(copy.content.relations[0]).toMatchObject({
+      from: copy.content.entities[0].id,
+      to: copy.content.entities[1].id,
+    });
+    expect(copy.content.collections[0].entityIds).toEqual(
+      copy.content.entities.map((entity) => entity.id),
+    );
+    expect(copy.content.events[0].entityIds).toEqual([
+      copy.content.entities[0].id,
+    ]);
   });
 });

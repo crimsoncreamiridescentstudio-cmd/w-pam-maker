@@ -121,62 +121,138 @@ describe("Item Dimension UX operations", () => {
     const original = structuredClone(source);
     const moved = transferOverride(source, "a", future, "move");
     expect(source).toEqual(original);
-    expect(moved[0].id).toBe("a"); expect(moved[0].conditions).toEqual(future);
+    expect(moved[0].id).toBe("a");
+    expect(moved[0].conditions).toEqual(future);
     expect(moved[1]).toEqual(source[1]);
   });
   it("copies with a new override ID and retains explicit empty/hidden values", () => {
-    const source = [recordOverrideSchema.parse({id:"a", conditions:back, patch:{summary:"", visible:false}})];
+    const source = [
+      recordOverrideSchema.parse({
+        id: "a",
+        conditions: back,
+        patch: { summary: "", visible: false },
+      }),
+    ];
     const copied = transferOverride(source, "a", future, "copy");
-    expect(copied[0]).toEqual(source[0]); expect(copied[1].id).not.toBe("a");
-    expect(copied[1].patch).toEqual({summary:"", visible:false});
+    expect(copied[0]).toEqual(source[0]);
+    expect(copied[1].id).not.toBe("a");
+    expect(copied[1].patch).toEqual({ summary: "", visible: false });
   });
   it("optionally hides the old condition while preserving identity and relation data", () => {
-    const {world, a} = fixture(); a.overrides = [override("a")];
-    const identity = {id:a.id, imageIds:a.imageIds, relatedIds:a.relatedIds};
+    const { world, a } = fixture();
+    a.overrides = [override("a")];
+    const identity = {
+      id: a.id,
+      imageIds: a.imageIds,
+      relatedIds: a.relatedIds,
+    };
     const relations = structuredClone(world.content.relations);
-    a.overrides = recordOverrideSchema.array().parse(transferOverride(a.overrides, "a", future, "move", true));
-    expect({id:a.id, imageIds:a.imageIds, relatedIds:a.relatedIds}).toEqual(identity);
+    a.overrides = recordOverrideSchema
+      .array()
+      .parse(transferOverride(a.overrides, "a", future, "move", true));
+    expect({
+      id: a.id,
+      imageIds: a.imageIds,
+      relatedIds: a.relatedIds,
+    }).toEqual(identity);
     expect(world.content.relations).toEqual(relations);
-    expect(resolveContent(world.content, {line:"back"}).entities.some(e => e.id === a.id)).toBe(false);
-    expect(resolveContent(world.content, {line:"back"}).relations).toHaveLength(0);
-    expect(resolveContent(world.content, {time:"future"}).entities.find(e => e.id === a.id)?.summary).toBe("冷酷な主人公");
+    expect(
+      resolveContent(world.content, { line: "back" }).entities.some(
+        (e) => e.id === a.id,
+      ),
+    ).toBe(false);
+    expect(
+      resolveContent(world.content, { line: "back" }).relations,
+    ).toHaveLength(0);
+    expect(
+      resolveContent(world.content, { time: "future" }).entities.find(
+        (e) => e.id === a.id,
+      )?.summary,
+    ).toBe("冷酷な主人公");
   });
   it("returns to inheritance when a move does not hide the source", () => {
-    const {a} = fixture(); const base = a.summary;
-    a.overrides = recordOverrideSchema.array().parse(transferOverride([override("a")], "a", future, "move"));
-    expect(resolveRecord(a, {line:"back"}).summary).toBe(base);
+    const { a } = fixture();
+    const base = a.summary;
+    a.overrides = recordOverrideSchema
+      .array()
+      .parse(transferOverride([override("a")], "a", future, "move"));
+    expect(resolveRecord(a, { line: "back" }).summary).toBe(base);
   });
   it("refuses an occupied or identical destination without changing anything", () => {
-    const source = [override("a"), override("b", future)]; const original = structuredClone(source);
-    expect(() => transferOverride(source,"a",future,"move")).toThrow("上書き");
-    expect(() => transferOverride(source,"a",back,"copy")).toThrow("上書き");
+    const source = [override("a"), override("b", future)];
+    const original = structuredClone(source);
+    expect(() => transferOverride(source, "a", future, "move")).toThrow(
+      "上書き",
+    );
+    expect(() => transferOverride(source, "a", back, "copy")).toThrow("上書き");
     expect(source).toEqual(original);
   });
   it("rejects missing sources and invalid conditions", () => {
-    expect(() => transferOverride([],"missing",future,"move")).toThrow();
-    expect(() => transferOverride([override("a")],"a",[],"move")).toThrow();
-    expect(() => transferOverride([override("a")],"a",[...future,...future],"move")).toThrow();
+    expect(() => transferOverride([], "missing", future, "move")).toThrow();
+    expect(() => transferOverride([override("a")], "a", [], "move")).toThrow();
+    expect(() =>
+      transferOverride([override("a")], "a", [...future, ...future], "move"),
+    ).toThrow();
   });
   it("keeps equal-specificity precedence stable on move", () => {
-    const {a} = fixture();
-    a.overrides = recordOverrideSchema.array().parse(transferOverride([override("a"), override("b", [{axisId:"line",optionId:"standard"}], {summary:"later"})], "a", future, "move"));
-    expect(resolveRecord(a, {time:"future",line:"standard"}).summary).toBe("later");
+    const { a } = fixture();
+    a.overrides = recordOverrideSchema.array().parse(
+      transferOverride(
+        [
+          override("a"),
+          override("b", [{ axisId: "line", optionId: "standard" }], {
+            summary: "later",
+          }),
+        ],
+        "a",
+        future,
+        "move",
+      ),
+    );
+    expect(resolveRecord(a, { time: "future", line: "standard" }).summary).toBe(
+      "later",
+    );
   });
   it("preserves old snapshot contents and passes dimension validation", () => {
-    const {world,a,state} = fixture(); a.overrides = [override("a")];
-    world.snapshots.push(snapshot(world.content,"","before"));
-    a.overrides = recordOverrideSchema.array().parse(transferOverride(a.overrides,"a",future,"move",true));
-    expect(world.snapshots[0].content.entities.find(e => e.id === a.id)?.overrides?.[0].conditions).toEqual(back);
+    const { world, a, state } = fixture();
+    a.overrides = [override("a")];
+    world.snapshots.push(snapshot(world.content, "", "before"));
+    a.overrides = recordOverrideSchema
+      .array()
+      .parse(transferOverride(a.overrides, "a", future, "move", true));
+    expect(
+      world.snapshots[0].content.entities.find((e) => e.id === a.id)
+        ?.overrides?.[0].conditions,
+    ).toEqual(back);
     expect(() => validateDimensions(state)).not.toThrow();
   });
   it("transfers relation patches without changing endpoints", () => {
-    const {world} = fixture(); const r = world.content.relations[0]; const endpoints = [r.from,r.to];
-    r.overrides = relationOverrideSchema.array().parse(transferOverride([{id:"rel",conditions:back,patch:{type:"宿敵",direction:"directed",note:""}}],"rel",future,"copy"));
-    expect([r.from,r.to]).toEqual(endpoints); expect(resolveRecord(r,{time:"future"}).type).toBe("宿敵");
+    const { world } = fixture();
+    const r = world.content.relations[0];
+    const endpoints = [r.from, r.to];
+    r.overrides = relationOverrideSchema.array().parse(
+      transferOverride(
+        [
+          {
+            id: "rel",
+            conditions: back,
+            patch: { type: "宿敵", direction: "directed", note: "" },
+          },
+        ],
+        "rel",
+        future,
+        "copy",
+      ),
+    );
+    expect([r.from, r.to]).toEqual(endpoints);
+    expect(resolveRecord(r, { time: "future" }).type).toBe("宿敵");
   });
   it("labels independent axes and the base view", () => {
-    const {folder} = fixture(); expect(dimensionLabel(folder,{})).toBe("基本データ");
-    expect(dimensionLabel(folder,{line:"back",time:"future"})).toContain(" ＋ ");
+    const { folder } = fixture();
+    expect(dimensionLabel(folder, {})).toBe("基本データ");
+    expect(dimensionLabel(folder, { line: "back", time: "future" })).toContain(
+      " ＋ ",
+    );
   });
 });
 
@@ -191,7 +267,8 @@ describe("Dimension resolution and migration", () => {
       settings: { font: 1.2, theme: "dark", density: 0.8, tutorial: 1 },
     };
     const next = normalizeState(legacy);
-    expect(next.schemaVersion).toBe(2);
+    expect(next.schemaVersion).toBe(3);
+    expect(next.entityTemplates).toEqual([]);
     expect(next.worldFolders).toEqual([]);
     expect(next.worlds).toEqual(legacy.worlds);
     expect(next.settings).toEqual(legacy.settings);
@@ -200,7 +277,7 @@ describe("Dimension resolution and migration", () => {
     expect(legacy.schemaVersion).toBe(1);
   });
   it("rejects unknown future versions", () =>
-    expect(() => normalizeState({ schemaVersion: 3 })).toThrow());
+    expect(() => normalizeState({ schemaVersion: 4 })).toThrow());
   it("applies single conditions, skips mismatches, and never mutates base", () => {
     const { world, a } = fixture();
     a.overrides = [override("back")];
@@ -448,7 +525,7 @@ describe("Dimension storage and backup", () => {
     ];
     world.snapshots.push(snapshot(world.content));
     const exported = await backup(state.worlds, state.worldFolders);
-    expect(exported.schemaVersion).toBe(2);
+    expect(exported.schemaVersion).toBe(3);
     const parsed = await parseBackup(
       new File([JSON.stringify(exported)], "new.json"),
     );
@@ -496,12 +573,12 @@ describe("Dimension storage and backup", () => {
         "main",
       );
       const read = await readState();
-      expect(read.schemaVersion).toBe(2);
+      expect(read.schemaVersion).toBe(3);
       expect(read.worlds[0].folderId).toBeUndefined();
       await mutate(read.revision, (s) => {
         s.settings.font = 1.2;
       });
-      expect((await conn.get("state", "main")).schemaVersion).toBe(2);
+      expect((await conn.get("state", "main")).schemaVersion).toBe(3);
     } finally {
       if (before) await conn.put("state", before, "main");
       else await conn.delete("state", "main");
