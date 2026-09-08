@@ -1393,10 +1393,12 @@ function RecordHistory({ world, record }: { world: World; record: Entity }) {
 }
 function Tutorial({
   finish,
+  initialStep = 0,
 }: {
-  finish: (destination?: TutorialAction) => void;
+  finish: (destination?: TutorialAction, step?: number) => void;
+  initialStep?: number;
 }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const current = tutorialSteps[step];
   return (
     <Modal title="はじめてのW-Pam" close={() => finish()}>
@@ -1433,7 +1435,7 @@ function Tutorial({
           </ul>
         )}
         {current.action && (
-          <B onClick={() => finish(current.action?.destination)} primary>
+          <B onClick={() => finish(current.action?.destination, step)} primary>
             {current.action.destination === "templates" ? (
               <Wrench />
             ) : (
@@ -2029,10 +2031,10 @@ function ExportDialog({
   );
 }
 type ModalState =
-  | {
-      type:
-        "settings" | "templates" | "tutorial" | "tips" | "history" | "snapshot";
-    }
+  | { type: "settings" | "history" | "snapshot" }
+  | { type: "templates"; returnToTutorialStep?: number }
+  | { type: "tutorial"; step?: number }
+  | { type: "tips" }
   | { type: "export"; content?: Content }
   | {
       type: "editor";
@@ -3146,7 +3148,14 @@ function App() {
           <TemplateManager
             templates={state.entityTemplates}
             busy={busy}
-            close={close}
+            close={() =>
+              modal.returnToTutorialStep === undefined
+                ? close()
+                : setModal({
+                    type: "tutorial",
+                    step: modal.returnToTutorialStep,
+                  })
+            }
             onSave={async (template) => {
               await run(async () => {
                 await save((s) => {
@@ -3175,12 +3184,19 @@ function App() {
         )}
         {modal?.type === "tutorial" && (
           <Tutorial
-            finish={(destination) =>
+            initialStep={modal.step}
+            finish={(destination, step) =>
               run(async () => {
                 await save((s) => {
                   s.settings.tutorial = tutorialVersion;
                 });
-                setModal(destination ? { type: destination } : undefined);
+                setModal(
+                  destination === "templates"
+                    ? { type: "templates", returnToTutorialStep: step }
+                    : destination
+                      ? { type: destination }
+                      : undefined,
+                );
               })
             }
           />
