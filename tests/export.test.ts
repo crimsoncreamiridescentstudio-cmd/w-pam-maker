@@ -1,7 +1,69 @@
 import { it, expect, vi, afterEach } from "vitest";
-import { orderEntities, renderPages } from "../src/export";
-import { blank, entitySchema, contentSchema, recordOverrideSchema, relationOverrideSchema } from "../src/model";
+import {
+  chooseEntryPlacement,
+  orderEntities,
+  renderPages,
+} from "../src/export";
+import {
+  blank,
+  entitySchema,
+  contentSchema,
+  recordOverrideSchema,
+  relationOverrideSchema,
+} from "../src/model";
 afterEach(() => vi.unstubAllGlobals());
+
+it("chooses all four pagination modes at their boundaries", () => {
+  const base = {
+    normalHeight: 600,
+    compactHeight: 480,
+    remaining: 500,
+    pageHeight: 970,
+    threshold: 0.5,
+  };
+  expect(
+    chooseEntryPlacement({ ...base, mode: "auto", remaining: 149 }),
+  ).toEqual({ startNewPage: true, compact: false });
+  expect(chooseEntryPlacement({ ...base, mode: "always" })).toEqual({
+    startNewPage: true,
+    compact: false,
+  });
+  expect(chooseEntryPlacement({ ...base, mode: "one-page" })).toEqual({
+    startNewPage: false,
+    compact: true,
+  });
+  expect(
+    chooseEntryPlacement({ ...base, mode: "one-page", compactHeight: 550 }),
+  ).toEqual({ startNewPage: false, compact: false });
+  expect(
+    chooseEntryPlacement({
+      ...base,
+      mode: "one-page",
+      normalHeight: 1000,
+      compactHeight: 900,
+      remaining: 300,
+    }),
+  ).toEqual({ startNewPage: true, compact: true });
+  expect(
+    chooseEntryPlacement({ ...base, mode: "threshold", remaining: 100 }),
+  ).toEqual({ startNewPage: true, compact: false });
+  expect(
+    chooseEntryPlacement({ ...base, mode: "threshold", remaining: 300 }),
+  ).toEqual({ startNewPage: false, compact: false });
+});
+
+it("does not compact an item that greatly exceeds a page", () => {
+  expect(
+    chooseEntryPlacement({
+      mode: "one-page",
+      normalHeight: 1800,
+      compactHeight: 1400,
+      remaining: 400,
+      pageHeight: 970,
+      threshold: 0.5,
+    }),
+  ).toEqual({ startNewPage: false, compact: false });
+});
 function mockCanvas() {
   const drawn: { text: string; y: number }[] = [];
   const context = {
@@ -24,15 +86,43 @@ function mockCanvas() {
 }
 it("orders export entities by kind, registration, name, or a manual list", () => {
   const world = blank("世界");
-  const location = entitySchema.parse({ ...blank("う・王都10"), kind: "location", worldId: world.id });
-  const characterB = entitySchema.parse({ ...blank("い・勇者2"), kind: "character", worldId: world.id });
-  const characterA = entitySchema.parse({ ...blank("あ・勇者1"), kind: "character", worldId: world.id });
+  const location = entitySchema.parse({
+    ...blank("う・王都10"),
+    kind: "location",
+    worldId: world.id,
+  });
+  const characterB = entitySchema.parse({
+    ...blank("い・勇者2"),
+    kind: "character",
+    worldId: world.id,
+  });
+  const characterA = entitySchema.parse({
+    ...blank("あ・勇者1"),
+    kind: "character",
+    worldId: world.id,
+  });
   const entities = [location, characterB, characterA];
 
-  expect(orderEntities(entities, "registration").map((entity) => entity.id)).toEqual([location.id, characterB.id, characterA.id]);
-  expect(orderEntities(entities, "kind").map((entity) => entity.id)).toEqual([characterB.id, characterA.id, location.id]);
-  expect(orderEntities(entities, "name").map((entity) => entity.id)).toEqual([characterA.id, characterB.id, location.id]);
-  expect(orderEntities(entities, "manual", [characterA.id, location.id, characterB.id]).map((entity) => entity.id)).toEqual([characterA.id, location.id, characterB.id]);
+  expect(
+    orderEntities(entities, "registration").map((entity) => entity.id),
+  ).toEqual([location.id, characterB.id, characterA.id]);
+  expect(orderEntities(entities, "kind").map((entity) => entity.id)).toEqual([
+    characterB.id,
+    characterA.id,
+    location.id,
+  ]);
+  expect(orderEntities(entities, "name").map((entity) => entity.id)).toEqual([
+    characterA.id,
+    characterB.id,
+    location.id,
+  ]);
+  expect(
+    orderEntities(entities, "manual", [
+      characterA.id,
+      location.id,
+      characterB.id,
+    ]).map((entity) => entity.id),
+  ).toEqual([characterA.id, location.id, characterB.id]);
 });
 it("paginates long Japanese text without silently truncating and excludes author notes", async () => {
   const drawn = mockCanvas();
@@ -98,19 +188,61 @@ it("exports display names, formal names, relations and reference labels", async 
   expect(text.some((value) => value.includes("[["))).toBe(false);
 });
 
-
 it("exports resolved Dimension content without hidden entities or relations", async () => {
   const { resolveContent } = await import("../src/dimensions");
   const drawn = mockCanvas();
   const world = blank("世界");
-  const a = entitySchema.parse({ ...blank("主人公"), kind: "character", worldId: world.id, summary: "基本の概要" });
-  const b = entitySchema.parse({ ...blank("非掲載の研究所"), kind: "location", worldId: world.id });
+  const a = entitySchema.parse({
+    ...blank("主人公"),
+    kind: "character",
+    worldId: world.id,
+    summary: "基本の概要",
+  });
+  const b = entitySchema.parse({
+    ...blank("非掲載の研究所"),
+    kind: "location",
+    worldId: world.id,
+  });
   const conditions = [{ axisId: "line", optionId: "back" }];
-  a.overrides = [recordOverrideSchema.parse({id:"a",conditions,patch:{summary:"差分の概要"}})];
-  b.overrides = [recordOverrideSchema.parse({id:"b",conditions,patch:{visible:false}})];
-  const content = contentSchema.parse({world,entities:[a,b],relations:[{id:"r",from:a.id,to:b.id,type:"秘密の関係",direction:"mutual",note:"",createdAt:world.createdAt,updatedAt:world.updatedAt}]});
-  await renderPages(resolveContent(content,{line:"back"}),{kinds:["character","location"],logo:false,separate:true,width:794});
-  const text = drawn.map(x => x.text).join("\n");
+  a.overrides = [
+    recordOverrideSchema.parse({
+      id: "a",
+      conditions,
+      patch: { summary: "差分の概要" },
+    }),
+  ];
+  b.overrides = [
+    recordOverrideSchema.parse({
+      id: "b",
+      conditions,
+      patch: { visible: false },
+    }),
+  ];
+  const content = contentSchema.parse({
+    world,
+    entities: [a, b],
+    relations: [
+      {
+        id: "r",
+        from: a.id,
+        to: b.id,
+        type: "秘密の関係",
+        direction: "mutual",
+        note: "",
+        createdAt: world.createdAt,
+        updatedAt: world.updatedAt,
+      },
+    ],
+  });
+  await renderPages(resolveContent(content, { line: "back" }), {
+    kinds: ["character", "location"],
+    logo: false,
+    separate: true,
+    width: 794,
+  });
+  const text = drawn.map((x) => x.text).join("\n");
   expect(text).toContain("差分の概要");
-  expect(text).not.toContain("基本の概要"); expect(text).not.toContain("非掲載の研究所"); expect(text).not.toContain("秘密の関係");
+  expect(text).not.toContain("基本の概要");
+  expect(text).not.toContain("非掲載の研究所");
+  expect(text).not.toContain("秘密の関係");
 });

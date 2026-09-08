@@ -98,38 +98,106 @@ const baseRecordSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
-export const dimensionConditionSchema = z.object({ axisId: z.string().min(1).max(100), optionId: z.string().min(1).max(100) });
-const conditionsSchema = z.array(dimensionConditionSchema).min(1).max(20).refine(c => new Set(c.map(x => x.axisId)).size === c.length, "同じ軸を複数条件に指定できません");
+export const dimensionConditionSchema = z.object({
+  axisId: z.string().min(1).max(100),
+  optionId: z.string().min(1).max(100),
+});
+const conditionsSchema = z
+  .array(dimensionConditionSchema)
+  .min(1)
+  .max(20)
+  .refine(
+    (c) => new Set(c.map((x) => x.axisId)).size === c.length,
+    "同じ軸を複数条件に指定できません",
+  );
 export const dimensionAxisSchema = z.object({
-  id: z.string().min(1).max(100), name: z.string().trim().min(1).max(100),
-  options: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().trim().min(1).max(100) })).min(1).max(100)
-    .refine(o => new Set(o.map(x => x.id)).size === o.length, "選択肢IDが重複しています"),
+  id: z.string().min(1).max(100),
+  name: z.string().trim().min(1).max(100),
+  options: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(100),
+        name: z.string().trim().min(1).max(100),
+      }),
+    )
+    .min(1)
+    .max(100)
+    .refine(
+      (o) => new Set(o.map((x) => x.id)).size === o.length,
+      "選択肢IDが重複しています",
+    ),
 });
 export const worldFolderSchema = z.object({
-  id: z.string().min(1).max(100), name: z.string().trim().min(1).max(100), description: text.default(""),
-  dimensionAxes: z.array(dimensionAxisSchema).max(20).refine(a => new Set(a.map(x => x.id)).size === a.length, "軸IDが重複しています"),
-  createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+  id: z.string().min(1).max(100),
+  name: z.string().trim().min(1).max(100),
+  description: text.default(""),
+  dimensionAxes: z
+    .array(dimensionAxisSchema)
+    .max(20)
+    .refine(
+      (a) => new Set(a.map((x) => x.id)).size === a.length,
+      "軸IDが重複しています",
+    ),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
 export type DimensionAxis = z.infer<typeof dimensionAxisSchema>;
 export type WorldFolder = z.infer<typeof worldFolderSchema>;
 export type DimensionCondition = z.infer<typeof dimensionConditionSchema>;
 export type DimensionSelection = Record<string, string>;
+export const entityTemplateFieldSchema = z.object({
+  id: z.string().min(1).max(100),
+  label: z.string().trim().min(1).max(80),
+});
+export const entityTemplateSchema = z.object({
+  id: z.string().min(1).max(100),
+  name: z.string().trim().min(1).max(100),
+  kind: z.enum(kinds),
+  fields: z.array(entityTemplateFieldSchema).min(1).max(30),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type EntityTemplate = z.infer<typeof entityTemplateSchema>;
 // Remove defaults before making fields optional: zod defaults inside partial()
 // would otherwise erase inherited fields with empty strings during parsing.
 function withoutDefaults<T extends z.ZodRawShape>(shape: T) {
-  return Object.fromEntries(Object.entries(shape).map(([key, schema]) => [key, schema instanceof z.ZodDefault ? schema.removeDefault() : schema])) as {
-    [K in keyof T]: T[K] extends z.ZodDefault<infer U> ? U : T[K]
+  return Object.fromEntries(
+    Object.entries(shape).map(([key, schema]) => [
+      key,
+      schema instanceof z.ZodDefault ? schema.removeDefault() : schema,
+    ]),
+  ) as {
+    [K in keyof T]: T[K] extends z.ZodDefault<infer U> ? U : T[K];
   };
 }
 // Identity, links and image ownership stay in the base record in v1.
-export const dimensionRecordPatchSchema = z.object(withoutDefaults(baseRecordSchema.omit({
-  id: true, createdAt: true, updatedAt: true, imageIds: true, imagePositions: true,
-  relatedIds: true, parentId: true, favorite: true, pinned: true,
-}).shape)).partial().extend({ visible: z.boolean().optional() }).strict();
+export const dimensionRecordPatchSchema = z
+  .object(
+    withoutDefaults(
+      baseRecordSchema.omit({
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        imageIds: true,
+        imagePositions: true,
+        relatedIds: true,
+        parentId: true,
+        favorite: true,
+        pinned: true,
+      }).shape,
+    ),
+  )
+  .partial()
+  .extend({ visible: z.boolean().optional() })
+  .strict();
 export const recordOverrideSchema = z.object({
-  id: z.string().min(1).max(100), conditions: conditionsSchema, patch: dimensionRecordPatchSchema,
+  id: z.string().min(1).max(100),
+  conditions: conditionsSchema,
+  patch: dimensionRecordPatchSchema,
 });
-export const recordSchema = baseRecordSchema.extend({ overrides: z.array(recordOverrideSchema).max(1000).optional() });
+export const recordSchema = baseRecordSchema.extend({
+  overrides: z.array(recordOverrideSchema).max(1000).optional(),
+});
 export type RecordData = z.infer<typeof recordSchema>;
 export const entitySchema = recordSchema.extend({
   kind: z.enum(kinds),
@@ -146,9 +214,24 @@ const baseRelationSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
-export const dimensionRelationPatchSchema = z.object(withoutDefaults(baseRelationSchema.pick({ type: true, direction: true, note: true }).shape)).partial().extend({ visible: z.boolean().optional() }).strict();
-export const relationOverrideSchema = z.object({ id: z.string().min(1).max(100), conditions: conditionsSchema, patch: dimensionRelationPatchSchema });
-export const relationSchema = baseRelationSchema.extend({ overrides: z.array(relationOverrideSchema).max(1000).optional() });
+export const dimensionRelationPatchSchema = z
+  .object(
+    withoutDefaults(
+      baseRelationSchema.pick({ type: true, direction: true, note: true })
+        .shape,
+    ),
+  )
+  .partial()
+  .extend({ visible: z.boolean().optional() })
+  .strict();
+export const relationOverrideSchema = z.object({
+  id: z.string().min(1).max(100),
+  conditions: conditionsSchema,
+  patch: dimensionRelationPatchSchema,
+});
+export const relationSchema = baseRelationSchema.extend({
+  overrides: z.array(relationOverrideSchema).max(1000).optional(),
+});
 export type Relation = z.infer<typeof relationSchema>;
 export const collectionSchema = z.object({
   id: z.string().min(1).max(100),
@@ -204,15 +287,17 @@ export type Settings = {
   lastBackup?: string;
 };
 export type State = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   worldFolders: WorldFolder[];
+  entityTemplates: EntityTemplate[];
   revision: number;
   worlds: World[];
   settings: Settings;
 };
 export const initialState = (): State => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   worldFolders: [],
+  entityTemplates: [],
   revision: 0,
   worlds: [],
   settings: { font: 1, density: 1, theme: "light", tutorial: 0 },
@@ -234,7 +319,11 @@ export function blank(name = ""): RecordData {
 export function shownName(record: Pick<RecordData, "name" | "displayName">) {
   return record.displayName.trim() || record.name;
 }
-export function relationDisplayLines(label: string, lineLength = 10, maxLines = 2) {
+export function relationDisplayLines(
+  label: string,
+  lineLength = 10,
+  maxLines = 2,
+) {
   const chars = Array.from(label.trim());
   const limit = lineLength * maxLines;
   const clipped = chars.slice(0, limit);
@@ -246,7 +335,9 @@ export function relationDisplayLines(label: string, lineLength = 10, maxLines = 
 export function relationDisplayLabel(label: string) {
   return relationDisplayLines(label).join("\n");
 }
-export function relationCurveOffsets(relations: Pick<Relation, "id" | "from" | "to">[]) {
+export function relationCurveOffsets(
+  relations: Pick<Relation, "id" | "from" | "to">[],
+) {
   const groups = new Map<string, Pick<Relation, "id" | "from" | "to">[]>();
   for (const relation of relations) {
     const key = [relation.from, relation.to].sort().join("::");
@@ -312,7 +403,9 @@ export function duplicateWorld(w: World): World {
       .filter(Boolean) as string[];
   return {
     folderId: w.folderId,
-    dimensionArchive: w.dimensionArchive ? structuredClone(w.dimensionArchive) : undefined,
+    dimensionArchive: w.dimensionArchive
+      ? structuredClone(w.dimensionArchive)
+      : undefined,
     content: {
       world: {
         ...structuredClone(w.content.world),
@@ -398,7 +491,8 @@ export function diff(a: Content, b: Content): Difference[] {
         out.push({
           name: y.name,
           field:
-            fields[key] || (key === "overrides" ? "Dimension差分" : "") ||
+            fields[key] ||
+            (key === "overrides" ? "Dimension差分" : "") ||
             (key === "relatedIds" ? "関連項目" : "画像・表示位置"),
           before: Array.isArray(x[key]) ? x[key].join(", ") : String(x[key]),
           after: Array.isArray(y[key]) ? y[key].join(", ") : String(y[key]),

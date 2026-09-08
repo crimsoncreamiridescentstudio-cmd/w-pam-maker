@@ -1,5 +1,6 @@
 import {
   worldFolderSchema,
+  entityTemplateSchema,
   worldSchema,
   initialState,
   type State,
@@ -23,26 +24,61 @@ export const conditionKey = (conditions: DimensionCondition[]) =>
       .sort(([a], [b]) => a.localeCompare(b)),
   );
 
-export function transferOverride(overrides: Override[], sourceId: string, destination: DimensionCondition[], mode: "move" | "copy", hideSource = false): Override[] {
-  const source = overrides.find(o => o.id === sourceId);
+export function transferOverride(
+  overrides: Override[],
+  sourceId: string,
+  destination: DimensionCondition[],
+  mode: "move" | "copy",
+  hideSource = false,
+): Override[] {
+  const source = overrides.find((o) => o.id === sourceId);
   if (!source) throw new Error("移動する姿が見つかりません。");
-  if (!destination.length || new Set(destination.map(c => c.axisId)).size !== destination.length)
+  if (
+    !destination.length ||
+    new Set(destination.map((c) => c.axisId)).size !== destination.length
+  )
     throw new Error("移動先の条件を選んでください。");
-  if (overrides.some(o => conditionKey(o.conditions) === conditionKey(destination)))
-    throw new Error("移動先には同じ条件の姿があります。先にその姿を編集・整理してください。上書きはしません。");
+  if (
+    overrides.some(
+      (o) => conditionKey(o.conditions) === conditionKey(destination),
+    )
+  )
+    throw new Error(
+      "移動先には同じ条件の姿があります。先にその姿を編集・整理してください。上書きはしません。",
+    );
   const next = structuredClone(overrides);
-  const index = next.findIndex(o => o.id === sourceId);
-  const transferred = { ...structuredClone(source), id: mode === "copy" ? crypto.randomUUID() : source.id, conditions: structuredClone(destination) };
+  const index = next.findIndex((o) => o.id === sourceId);
+  const transferred = {
+    ...structuredClone(source),
+    id: mode === "copy" ? crypto.randomUUID() : source.id,
+    conditions: structuredClone(destination),
+  };
   if (mode === "copy") next.push(transferred);
   else {
     next[index] = transferred;
-    if (hideSource) next.push({id: crypto.randomUUID(), conditions: structuredClone(source.conditions), patch: {visible: false}});
+    if (hideSource)
+      next.push({
+        id: crypto.randomUUID(),
+        conditions: structuredClone(source.conditions),
+        patch: { visible: false },
+      });
   }
   return next;
 }
 
-export function dimensionLabel(folder: WorldFolder, selection: DimensionSelection): string {
-  return folder.dimensionAxes.filter(a => selection[a.id]).map(a => `${a.name}：${a.options.find(o => o.id === selection[a.id])?.name || "不明"}`).join(" ＋ ") || "基本データ";
+export function dimensionLabel(
+  folder: WorldFolder,
+  selection: DimensionSelection,
+): string {
+  return (
+    folder.dimensionAxes
+      .filter((a) => selection[a.id])
+      .map(
+        (a) =>
+          `${a.name}：${a.options.find((o) => o.id === selection[a.id])?.name || "不明"}`,
+      )
+      .join(" ＋ ") || "基本データ"
+  );
 }
 export function validSelection(
   folder: WorldFolder | undefined,
@@ -202,10 +238,11 @@ export function normalizeState(raw?: unknown): State {
   if (!raw) return initialState();
   const source = z
     .object({
-      schemaVersion: z.union([z.literal(1), z.literal(2)]),
+      schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
       revision: z.number().int().nonnegative().default(0),
       worlds: z.array(worldSchema).max(100).default([]),
       worldFolders: z.array(worldFolderSchema).max(100).default([]),
+      entityTemplates: z.array(entityTemplateSchema).max(200).default([]),
       settings: z
         .object({
           font: z.number(),
@@ -220,7 +257,7 @@ export function normalizeState(raw?: unknown): State {
     .parse(raw);
   const state: State = {
     ...source,
-    schemaVersion: 2,
+    schemaVersion: 3,
     settings: { ...initialState().settings, ...source.settings },
   };
   validateDimensions(state);
